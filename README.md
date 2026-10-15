@@ -19,6 +19,7 @@ A Parte 1, de análise exploratória, em seis pontos:
 | :-- | :-- | :-- |
 | 1.1 | Perfil dos dados, faltantes e outliers | [Seção](#parte-11--perfil-e-qualidade-dos-dados) e [notebook 01](notebooks/01_data_audit.ipynb) |
 | 1.2 a 1.4 | Atributos que importam, padrões por plataforma e visualizações | [Seção](#partes-12-a-14--o-que-acompanha-a-boa-performance-dos-criativos) e [notebook 02](notebooks/02_eda_insights.ipynb) |
+| 2 | Modelagem do Klike Score | [Seção](#parte-2--modelagem-do-klike-score) e [notebook 03](notebooks/03_modeling.ipynb) |
 
 ---
 
@@ -88,7 +89,7 @@ O impacto não é pequeno. **Quatro linhas, 0,8% da base, triplicavam a média d
 | CPC fora de escala | 3 | Recalcular: gasto ÷ cliques | O ROAS confirma o gasto (identidade) |
 | Gasto fora de escala | 3 | Recalcular: cliques × CPC | O ROAS confirma cliques × CPC em 2 (identidade); no KLK-0224, sem receita, só o CPC registrado é plausível (plausibilidade) |
 | CPC e receita faltantes | 28 e 25 | Recuperar pelas mesmas contas | Recuperação exata no CPC; erro máximo de 0,5% do gasto na receita |
-| Faltantes em duração, legenda, música/voz, tempo assistido e engajamento | 27 a 46 por coluna | Imputar dentro do pipeline do modelo, na Parte 2, com indicador de ausência | Nenhum teste encontrou relação entre a ausência e as variáveis observadas, o que é compatível com MCAR; descartar perderia 30% da base |
+| Faltantes em duração, legenda, música/voz, tempo assistido e engajamento | 27 a 46 por coluna | Imputar dentro do pipeline do modelo, na Parte 2, ajustado só no treino. Legenda sem marcação vira a categoria "desconhecida"; indicadores de ausência só entram se o experimento F1 justificar | Nenhum teste encontrou relação entre a ausência e as variáveis observadas, o que é compatível com MCAR; descartar perderia 30% da base |
 | CTR travado em 15% e engajamento em 10% | 55 e 11 | Manter, com flag | Parecem tetos de registro: muitos valores exatamente no limite e nenhum acima. O valor real pode ter sido maior |
 | Tempo médio assistido igual à duração do vídeo | 32 | Manter, com flag | Exigiria que todos vissem o vídeo inteiro; tratado como limite da métrica |
 | Receita zero em Branding | 63 | ROAS "não se aplica" | Branding não mede receita, mesmo com conversões |
@@ -183,13 +184,61 @@ Os seis gráficos das Partes 1.2 e 1.3 foram feitos para um time de marketing. C
 
 ---
 
+## Parte 2 · Modelagem do Klike Score
+
+> Notebook completo: [`notebooks/03_modeling.ipynb`](notebooks/03_modeling.ipynb)
+
+A modelagem segue um protocolo definido antes dos experimentos formais. Esta seção registra as decisões de base; os resultados dos experimentos entram aqui à medida que forem concluídos.
+
+### Dois cenários, um principal
+
+| | Modelo A · pré-publicação | Modelo B · pós-publicação |
+| :-- | :-- | :-- |
+| **Usa** | Contexto da campanha e atributos do criativo: 13 colunas | Tudo do modelo A, mais taxas de performance |
+| **Papel** | Principal: pontua criativos novos e apoia o recommendations engine | Comparativo: mede quanto o score acompanha a performance realizada |
+
+O modelo A é o principal porque é o único que pode ser usado antes de gastar, quando a decisão sobre o criativo acontece. Um teste automatizado impede que métricas de performance, o próprio score, o identificador ou a data entrem nele, e a mesma função prepara o histórico e uma campanha nova. O modelo B não serve para avaliar um criativo que ainda não foi veiculado. Uma ressalva vale para os dois: reproduzir o score da Klike numa base simulada não é o mesmo que prever vendas.
+
+### O que a exploração inicial indicou
+
+Antes do protocolo, uma exploração nas 500 campanhas mostrou que:
+
+- o contexto sozinho não prevê o score;
+- criativo e contexto juntos explicam cerca de dois terços da variação;
+- um modelo linear foi melhor que um gradient boosting;
+- as métricas de performance acrescentam explicação, mas só existem depois do gasto.
+
+Esses números orientaram o plano e não valem como desempenho, porque a exploração viu todas as campanhas, inclusive as que depois foram para o teste.
+
+### Como os modelos são avaliados
+
+- **Desenvolvimento e teste.** 400 campanhas para desenvolver e 100 para o teste final, com a mesma proporção de plataformas. O teste é consultado uma única vez, depois que modelo, features e hiperparâmetros estiverem decididos.
+- **Validação cruzada aninhada.** Os candidatos são comparados nas mesmas 25 partições do desenvolvimento, e os hiperparâmetros são escolhidos só dentro do treino de cada partição.
+- **Decisão.** A métrica principal é o MAE, em pontos de score. Uma alternativa mais complexa precisa de uma melhora relevante e estável; na dúvida, fica a mais simples.
+- **Checagem temporal.** Treinar nos três primeiros trimestres e avaliar no quarto, como robustez complementar.
+
+### Candidatos e experimentos planejados
+
+| Experimento | Pergunta |
+| :-- | :-- |
+| M1 | Um modelo linear (Ridge) basta, ou um não linear (HistGradientBoosting) ganha? |
+| F1 | Indicadores de ausência para duração e música/voz melhoram o modelo? |
+| F2 | A duração em log funciona melhor que a original? Só faz sentido no modelo linear |
+| F3 | O efeito do formato depende da plataforma? Só combinações com campanhas suficientes no treino entram |
+
+**O piso.** Prevendo sempre a média do treino, o erro médio no desenvolvimento é de 12,8 pontos, numa escala de 0 a 100, e varia de 10,9 a 14,6 entre as partições. É o que todo candidato precisa superar.
+
+---
+
 ## Limitações
 
 - **Associação, não causa.** Os efeitos comparam campanhas parecidas, mas algo não observado, como a qualidade da oferta, pode andar junto com o atributo. Testes A/B confirmariam.
 - **A base é pequena e simulada.** São 500 campanhas, e só 83 no LinkedIn, onde os intervalos de confiança ficam largos.
 - **CTR e engajamento parecem ter teto de registro:** muitos valores exatamente em 15% e 10%, e nenhum acima. Se for censura, as estimativas sobre essas métricas podem estar distorcidas, e a direção do viés depende de quais campanhas bateram no teto.
-- **MNAR não pode ser descartado em música/voz e engajamento,** porque nenhuma variável observada é correlacionada o bastante com elas para servir de pista. Os testes mostram que a ausência é compatível com acaso, não que seja aleatória. O indicador de ausência no modelo da Parte 2 deixa o modelo usar a própria ausência como informação, mas não corrige um viés desse tipo.
+- **MNAR não pode ser descartado em música/voz e engajamento,** porque nenhuma variável observada é correlacionada o bastante com elas para servir de pista. Os testes mostram que a ausência é compatível com acaso, não que seja aleatória. Se a Parte 2 adotar indicadores de ausência, eles deixam o modelo usar a própria ausência como informação, mas não corrigem um viés desse tipo.
 - **Há poucos vídeos longos no TikTok:** só 5 passam de 30 segundos, então a base não testa vídeos longos nessa plataforma.
+- **A exploração inicial da Parte 2 viu as 500 campanhas,** como a EDA, inclusive as que depois foram para o teste. O teste final não é totalmente intocado em relação às escolhas do plano: o protocolo limita esse efeito, mas não o elimina.
+- **Não há identificador de criativo.** Nenhuma campanha repete todas as variáveis de pré-publicação de outra, mas isso não prova que versões do mesmo anúncio não estejam em lados diferentes da divisão entre desenvolvimento e teste.
 
 ---
 
@@ -210,7 +259,7 @@ jupyter lab notebooks/           # notebooks com a análise
 Para reexecutar os notebooks do zero e regenerar as figuras:
 
 ```bash
-jupyter nbconvert --to notebook --execute --inplace notebooks/01_data_audit.ipynb notebooks/02_eda_insights.ipynb
+jupyter nbconvert --to notebook --execute --inplace notebooks/01_data_audit.ipynb notebooks/02_eda_insights.ipynb notebooks/03_modeling.ipynb
 ```
 
 O notebook 01 pode levar até um minuto e meio, por causa do teste de permutação dos faltantes.
@@ -221,7 +270,8 @@ O notebook 01 pode levar até um minuto e meio, por causa do teste de permutaç�
 ├── data/raw/                     dataset original, nunca alterado
 ├── notebooks/
 │   ├── 01_data_audit.ipynb       Parte 1.1: perfil e qualidade dos dados
-│   └── 02_eda_insights.ipynb     Partes 1.2 a 1.4: o que acompanha a performance
+│   ├── 02_eda_insights.ipynb     Partes 1.2 a 1.4: o que acompanha a performance
+│   └── 03_modeling.ipynb         Parte 2: modelagem do Klike Score
 ├── reports/
 │   ├── data_corrections.csv      log de auditoria: cada correção, sua base e evidência
 │   └── figures/                  gráficos exportados
@@ -229,6 +279,7 @@ O notebook 01 pode levar até um minuto e meio, por causa do teste de permutaç�
 │   ├── config.py                 caminhos, grupos de colunas e constantes
 │   ├── data.py                   carregamento, validação e limpeza
 │   ├── analysis.py               métricas comparáveis, efeitos e níveis de evidência
+│   ├── modeling.py               features declaradas, divisão, validação e pipelines
 │   ├── formatting.py             números no padrão brasileiro
 │   └── viz.py                    estilo visual único dos gráficos
 └── tests/                        testes automatizados (pytest)
