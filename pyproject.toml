@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "klike"
+version = "0.1.0"
+description = "Klike Data Science Challenge: auditoria de dados, modelagem do Klike Score e recommendations engine para criativos de vídeo."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Murilo Godoy" }]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]

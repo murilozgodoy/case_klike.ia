@@ -1,0 +1,64 @@
+campaign_id,column,old_value,new_value,rule,basis,evidence
+KLK-0148,impressions,13007321.0,42500.0,Impressões infladas,plausibilidade,"impressões 306x acima de cliques/CTR; cliques confirmados por gasto = cliques x CPC; o CTR alternativo, cliques/impressões, seria 0,0048%, fora da faixa observada (0,22% a 15%)"
+KLK-0232,impressions,12594257.0,11695.0,Impressões infladas,plausibilidade,"impressões 1.077x acima de cliques/CTR; cliques confirmados por gasto = cliques x CPC; o CTR alternativo, cliques/impressões, seria 0,0027%, fora da faixa observada (0,22% a 15%)"
+KLK-0258,impressions,12873562.0,86948.0,Impressões infladas,plausibilidade,"impressões 148x acima de cliques/CTR; cliques confirmados por gasto = cliques x CPC; o CTR alternativo, cliques/impressões, seria 0,029%, fora da faixa observada (0,22% a 15%)"
+KLK-0413,impressions,14052761.0,72059.0,Impressões infladas,plausibilidade,"impressões 195x acima de cliques/CTR; cliques confirmados por gasto = cliques x CPC; o CTR alternativo, cliques/impressões, seria 0,019%, fora da faixa observada (0,22% a 15%)"
+KLK-0100,cpc,20.0,0.39,CPC fora de escala,identidade,"gasto confirmado pelo ROAS (receita/gasto = 3,13); CPC 20,00 não bate com gasto/cliques = 0,39"
+KLK-0109,spend,50544.77,241.9,Gasto fora de escala,identidade,"cliques x CPC confirmado pelo ROAS (receita/(cliques x CPC) = 0,26); gasto registrado 209x maior"
+KLK-0224,spend,85023.8,21557.4,Gasto fora de escala,plausibilidade,"ROAS não desempata (receita zero ou ausente); faixa de CPC da plataforma 0,21 a 1,37: CPC registrado 1,22 dentro, gasto/cliques 4,81 fora"
+KLK-0240,cpc,24.17,0.98,CPC fora de escala,identidade,"gasto confirmado pelo ROAS (receita/gasto = 4,31); CPC 24,17 não bate com gasto/cliques = 0,98"
+KLK-0259,spend,95811.69,5.4,Gasto fora de escala,identidade,"cliques x CPC confirmado pelo ROAS (receita/(cliques x CPC) = 13,45); gasto registrado 17.743x maior"
+KLK-0416,cpc,26.05,0.74,CPC fora de escala,identidade,"gasto confirmado pelo ROAS (receita/gasto = 2,21); CPC 26,05 não bate com gasto/cliques = 0,74"
+KLK-0007,cpc,,1.15,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0076,cpc,,0.34,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0079,cpc,,0.35,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0111,cpc,,0.92,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0119,cpc,,3.73,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0131,cpc,,0.71,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0146,cpc,,0.56,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0162,cpc,,0.32,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0186,cpc,,0.45,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0200,cpc,,0.56,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0202,cpc,,0.82,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0233,cpc,,0.8,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0273,cpc,,2.92,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0304,cpc,,0.81,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0305,cpc,,0.62,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0309,cpc,,0.46,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0323,cpc,,0.58,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0329,cpc,,1.03,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0337,cpc,,2.22,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0350,cpc,,0.4,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0386,cpc,,0.43,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0397,cpc,,2.97,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0405,cpc,,0.99,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0410,cpc,,0.89,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0427,cpc,,0.93,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0465,cpc,,4.34,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0484,cpc,,0.67,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0487,cpc,,0.57,CPC faltante recuperado,identidade,identidade gasto = cliques x CPC
+KLK-0002,revenue,,279.24,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0031,revenue,,12610.65,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0059,revenue,,0.0,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0110,revenue,,0.0,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0145,revenue,,373.89,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0159,revenue,,1881.91,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0183,revenue,,145.03,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0188,revenue,,18164.02,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0194,revenue,,406.03,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0203,revenue,,802.13,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0262,revenue,,5045.07,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0277,revenue,,2066.17,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0280,revenue,,0.0,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0303,revenue,,195.75,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0313,revenue,,886.62,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0320,revenue,,540.33,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0354,revenue,,1605.58,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0357,revenue,,407.0,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0358,revenue,,5201.35,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0381,revenue,,187.83,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0386,revenue,,30373.15,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0451,revenue,,288.28,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0457,revenue,,1299.19,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0466,revenue,,0.0,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
+KLK-0486,revenue,,3522.16,Receita faltante recuperada,identidade,identidade ROAS = receita / gasto (ROAS com 2 casas decimais)
