@@ -1,0 +1,15 @@
+{
+  "platform": "TikTok",
+  "category": "E-commerce",
+  "objective": "conversions",
+  "target_audience_age": "18-24",
+  "is_retargeting": false,
+  "video_duration_s": 22,
+  "format": "quadrado",
+  "has_subtitle": false,
+  "has_cta": false,
+  "has_hook": false,
+  "has_face": true,
+  "text_density": "high",
+  "music_voice_ratio": 0.35
+}
