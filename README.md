@@ -89,7 +89,7 @@ O impacto não é pequeno. **Quatro linhas, 0,8% da base, triplicavam a média d
 | CPC fora de escala | 3 | Recalcular: gasto ÷ cliques | O ROAS confirma o gasto (identidade) |
 | Gasto fora de escala | 3 | Recalcular: cliques × CPC | O ROAS confirma cliques × CPC em 2 (identidade); no KLK-0224, sem receita, só o CPC registrado é plausível (plausibilidade) |
 | CPC e receita faltantes | 28 e 25 | Recuperar pelas mesmas contas | Recuperação exata no CPC; erro máximo de 0,5% do gasto na receita |
-| Faltantes em duração, legenda, música/voz, tempo assistido e engajamento | 27 a 46 por coluna | Imputar dentro do pipeline do modelo, na Parte 2, ajustado só no treino. Legenda sem marcação vira a categoria "desconhecida"; indicadores de ausência só entram se o experimento F1 justificar | Nenhum teste encontrou relação entre a ausência e as variáveis observadas, o que é compatível com MCAR; descartar perderia 30% da base |
+| Faltantes em duração, legenda, música/voz, tempo assistido e engajamento | 27 a 46 por coluna | Imputar dentro do pipeline do modelo, na Parte 2, ajustado só no treino. Legenda sem marcação vira a categoria "desconhecida"; indicadores de ausência foram testados na Parte 2 e ficaram de fora, por não trazerem ganho | Nenhum teste encontrou relação entre a ausência e as variáveis observadas, o que é compatível com MCAR; descartar perderia 30% da base |
 | CTR travado em 15% e engajamento em 10% | 55 e 11 | Manter, com flag | Parecem tetos de registro: muitos valores exatamente no limite e nenhum acima. O valor real pode ter sido maior |
 | Tempo médio assistido igual à duração do vídeo | 32 | Manter, com flag | Exigiria que todos vissem o vídeo inteiro; tratado como limite da métrica |
 | Receita zero em Branding | 63 | ROAS "não se aplica" | Branding não mede receita, mesmo com conversões |
@@ -188,7 +188,7 @@ Os seis gráficos das Partes 1.2 e 1.3 foram feitos para um time de marketing. C
 
 > Notebook completo: [`notebooks/03_modeling.ipynb`](notebooks/03_modeling.ipynb)
 
-A modelagem segue um protocolo definido antes dos experimentos formais. Esta seção registra as decisões de base; os resultados dos experimentos entram aqui à medida que forem concluídos.
+A modelagem segue um protocolo definido antes dos experimentos formais. Esta seção registra as decisões e os resultados até a escolha do modelo; a certificação no teste e a interpretação entram aqui quando forem concluídas.
 
 ### Dois cenários, um principal
 
@@ -217,16 +217,31 @@ Esses números orientaram o plano e não valem como desempenho, porque a explora
 - **Decisão.** A métrica principal é o MAE, em pontos de score. Uma alternativa mais complexa precisa de uma melhora relevante e estável; na dúvida, fica a mais simples.
 - **Checagem temporal.** Treinar nos três primeiros trimestres e avaliar no quarto, como robustez complementar.
 
-### Candidatos e experimentos planejados
+### Experimentos e escolha do modelo
 
-| Experimento | Pergunta |
-| :-- | :-- |
-| M1 | Um modelo linear (Ridge) basta, ou um não linear (HistGradientBoosting) ganha? |
-| F1 | Indicadores de ausência para duração e música/voz melhoram o modelo? |
-| F2 | A duração em log funciona melhor que a original? Só faz sentido no modelo linear |
-| F3 | O efeito do formato depende da plataforma? Só combinações com campanhas suficientes no treino entram |
+![Seleção do modelo](reports/figures/03_selecao_modelo.png)
 
-**O piso.** Prevendo sempre a média do treino, o erro médio no desenvolvimento é de 12,8 pontos, numa escala de 0 a 100, e varia de 10,9 a 14,6 entre as partições. É o que todo candidato precisa superar.
+**M1 · Algoritmos.** A hipótese era que, com os efeitos aditivos vistos na Parte 1, um modelo linear bastaria. Nas mesmas 25 partições do desenvolvimento, com média e desvio entre elas:
+
+| Modelo | MAE (pontos) | R² | Spearman |
+| :-- | :-- | :-- | :-- |
+| Dummy, a média do treino | 12,8 ± 0,9 | −0,01 | não se aplica |
+| Ridge | 7,0 ± 0,5 | 0,69 | 0,82 |
+| HistGradientBoosting | 7,2 ± 0,6 | 0,66 | 0,79 |
+
+A Ridge erra, em média, 7 pontos numa escala de 0 a 100: 45% menos que o piso, com melhora em todas as partições. O boosting não melhora a Ridge: erra 0,23 ponto a mais e só a supera em 32% das partições. **Decisão: Ridge**, mais simples, mais estável e interpretável, já que cada coeficiente vira pontos de score.
+
+**F1 a F3 · Features, na Ridge.** Cada alteração foi comparada com a Ridge base, nas mesmas partições:
+
+| Experimento | Resultado | Decisão |
+| :-- | :-- | :-- |
+| F1 · indicadores de ausência para duração e música/voz | MAE 0,03 ponto pior; melhor em 40% das partições | Fica de fora: os indicadores não trouxeram ganho consistente. Isso é compatível com a Parte 1, mas não prova que a ausência seja aleatória |
+| F2 · duração em log | Nenhuma diferença; cada versão vence em cerca de metade das partições | Fica de fora: no empate, fica a forma mais simples |
+| F3 · interação plataforma × formato | MAE 0,23 ponto menor (3,3%); melhor em 92% das partições | Entra |
+
+O F3 ficou abaixo da referência de 0,5 ponto do protocolo, então a decisão pesou os outros critérios: a melhora é muito estável, custa só três termos, mantém o modelo linear e deixa o efeito do formato específico de cada plataforma. Sem a interação, o modelo aplicaria o mesmo efeito de formato a todas as plataformas, embora o vídeo horizontal tenha score menor na Meta e seja o formato mais usado no LinkedIn. Combinações sem campanhas suficientes no treino, como TikTok horizontal, não ganham efeito próprio.
+
+**Modelo escolhido:** Ridge com as 13 features de pré-publicação e a interação plataforma × formato. Nas partições do desenvolvimento, ele erra 6,78 pontos em média, mas essas são as mesmas partições que orientaram a escolha, então o número pode trazer algum otimismo de seleção. A estimativa que vale é a da certificação nas 100 campanhas reservadas, que até aqui não foram consultadas.
 
 ---
 
@@ -235,7 +250,7 @@ Esses números orientaram o plano e não valem como desempenho, porque a explora
 - **Associação, não causa.** Os efeitos comparam campanhas parecidas, mas algo não observado, como a qualidade da oferta, pode andar junto com o atributo. Testes A/B confirmariam.
 - **A base é pequena e simulada.** São 500 campanhas, e só 83 no LinkedIn, onde os intervalos de confiança ficam largos.
 - **CTR e engajamento parecem ter teto de registro:** muitos valores exatamente em 15% e 10%, e nenhum acima. Se for censura, as estimativas sobre essas métricas podem estar distorcidas, e a direção do viés depende de quais campanhas bateram no teto.
-- **MNAR não pode ser descartado em música/voz e engajamento,** porque nenhuma variável observada é correlacionada o bastante com elas para servir de pista. Os testes mostram que a ausência é compatível com acaso, não que seja aleatória. Se a Parte 2 adotar indicadores de ausência, eles deixam o modelo usar a própria ausência como informação, mas não corrigem um viés desse tipo.
+- **MNAR não pode ser descartado em música/voz e engajamento,** porque nenhuma variável observada é correlacionada o bastante com elas para servir de pista. Os testes mostram que a ausência é compatível com acaso, não que seja aleatória. Os indicadores de ausência testados na Parte 2 não trouxeram ganho e ficaram de fora; mesmo que entrassem, não corrigiriam um viés desse tipo.
 - **Há poucos vídeos longos no TikTok:** só 5 passam de 30 segundos, então a base não testa vídeos longos nessa plataforma.
 - **A exploração inicial da Parte 2 viu as 500 campanhas,** como a EDA, inclusive as que depois foram para o teste. O teste final não é totalmente intocado em relação às escolhas do plano: o protocolo limita esse efeito, mas não o elimina.
 - **Não há identificador de criativo.** Nenhuma campanha repete todas as variáveis de pré-publicação de outra, mas isso não prova que versões do mesmo anúncio não estejam em lados diferentes da divisão entre desenvolvimento e teste.
