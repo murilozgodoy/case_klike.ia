@@ -371,7 +371,7 @@ As 13 features não precisam coincidir: quando há poucas campanhas parecidas, o
 
 > Notebook completo: [`notebooks/04_recommendations.ipynb`](notebooks/04_recommendations.ipynb)
 
-O engine recebe uma campanha e sugere edições no vídeo, ordenadas por prioridade. Esta seção registra o desenho e as evidências que ele usa; o engine e a avaliação nas 500 campanhas entram aqui quando forem concluídos.
+O engine recebe uma campanha e sugere edições no vídeo, ordenadas por prioridade. Esta seção registra o desenho, as evidências que ele usa e como ele funciona; a avaliação nas 500 campanhas entra aqui quando for concluída.
 
 ### Três camadas que não se misturam
 
@@ -409,8 +409,9 @@ O enunciado sugere, como exemplo, reduzir a duração no TikTok. Nesta base, dob
 - **Hook e rosto são estáveis em todas as análises.**
 - **Estabilidade é da classe, não da estimativa.** 65 das 70 hipóteses mantêm a classe em todas as sensibilidades, mas as magnitudes variam entre as análises. Em 4 contrastes inconclusivos, com estimativas de até 1,1% em módulo, o sinal chega a se inverter.
 
-### Como o engine vai decidir
+### Como o engine decide
 
+- **Só edições aplicáveis.** O engine sugere apenas edições do catálogo que mudam algo que a campanha tem hoje. Um valor ausente nunca conta como ausência: legenda sem marcação não vira "sem legenda". Plataforma, categoria, objetivo, público e retargeting nunca mudam, e formatos sem histórico na plataforma, como horizontal no TikTok, nunca são sugeridos.
 - **Contexto sem personalização artificial.** As edições aplicáveis dependem do que a campanha já tem, o formato é estimado dentro de cada plataforma, e o objetivo define a métrica. Os efeitos de hook, rosto e texto são gerais: a variância entre plataformas estimada é zero em 9 das 12 combinações testadas, então estimativas encolhidas por plataforma devolveriam o próprio efeito geral.
 - **Métrica pelo objetivo:**
   - traffic, CTR;
@@ -420,13 +421,52 @@ O enunciado sugere, como exemplo, reduzir a duração no TikTok. Nesta base, dob
 - **Três classes:**
   - **A:** associação robusta e estável;
   - **B:** indício, ou robusta mas sensível;
-  - **C:** ganho de score sem evidência de performance, apresentado como hipótese para teste.
-- **Prioridade:** primeiro a classe, depois o impacto estimado. Prioridade não é impacto: uma recomendação B pode ter impacto estimado maior que uma A e ficar atrás.
+  - **C:** ganho de score sem evidência suficiente na métrica do objetivo, apresentado como hipótese para teste. A saída não nega associações em outras métricas: o formato vertical na Meta, por exemplo, é C numa campanha de conversões e cita o engajamento +63%.
+- **Prioridade:** primeiro a classe; dentro de A e de B, a associação com a métrica do objetivo; dentro de C, o limite inferior do intervalo do score, para respeitar a incerteza. Prioridade não é impacto: uma recomendação B pode ter impacto estimado maior que uma A e ficar atrás, e a saída explica por quê.
+- **Conflitos à vista.** Quando o score sobe, mas a associação com a métrica do objetivo é inconclusiva ou tem sinal desfavorável, a recomendação fica em C, com aviso. Uma associação desfavorável com p < 0,05 exclui a edição.
 - **Mínimo de três:** o engine lista todas as recomendações defensáveis e diz quando elas são menos de três, sem completar a lista.
 - **Suporte histórico:** campanhas com o valor atual e com o sugerido, do recorte mais específico ao mais amplo, com pelo menos 10 de cada lado. Suporte baixo vira aviso de extrapolação e não muda a classe de evidência.
 - **Score da campanha concreta:** o score antes e depois de cada edição vem do preditor, dentro da escala de 0 a 100. A tabela de diferenças, com seus intervalos, é evidência complementar.
+- **Combinação sem histórico:** se a própria campanha está numa combinação de plataforma e formato sem nenhuma campanha na base, como vídeo horizontal no TikTok, ficam só as recomendações A e B, cada uma com aviso de extrapolação. As oportunidades só de score saem, porque o ganho delas viria só de uma previsão fora do histórico. Nenhuma das 500 campanhas da base está nessa situação.
+- **Métrica incompatível é rejeitada:** pedir ROAS para uma campanha de Branding, que não registra receita, gera um erro com mensagem clara.
+- **Explicações precisas:** as associações aparecem como gerais, ajustadas pelo contexto, e não como efeitos medidos só em campanhas como aquela. O suporte histórico contextual aparece como base de comparação, não como estimativa do recorte. Toda saída termina com essa nota de leitura.
 
 As duas tabelas de evidências ficam em `reports/`, com estimativa, intervalo, tamanho de cada lado, classe, sensibilidades e limitações de cada linha.
+
+### Como usar o engine
+
+Pela linha de comando, com uma campanha do histórico ou um JSON com os 13 atributos de pré-publicação:
+
+```bash
+python -m klike.recommend --campanha KLK-0024
+python -m klike.recommend --arquivo examples/campanha_nova.json --json
+```
+
+Trecho da saída para a KLK-0024, uma campanha de conversões na Meta:
+
+```
+4 recomendações: 2 de classe A, 1 de classe B e 1 de classe C.
+
+1. Incluir um hook nos 3 primeiros segundos  [classe A: melhoria com evidência de performance]
+   Impacto estimado: conversões por mil impressões +48% (de +26% a +75%), evidência robusta
+   Score previsto: 37,6 → 54,6 (+17,0; intervalo do modelo: +15,7 a +18,5)
+   Suporte histórico contextual: 39 campanhas sem hook e 45 com hook (recorte: plataforma e objetivo)
+   Próximo passo: Teste A/B da versão com hook contra a atual, medindo conversões por mil impressões.
+
+3. Reduzir o texto na tela de alto para médio  [classe B: melhoria com evidência fraca ou sensível]
+   Impacto estimado: conversões por mil impressões +36% (de +8% a +71%), evidência robusta, mas sensível à análise
+   Prioridade: Tem impacto estimado maior que mostrar um rosto humano, mas fica depois porque a evidência é de classe B: melhoria com evidência fraca ou sensível.
+```
+
+Em Python, `recommend(campanha)` devolve o mesmo relatório, com `to_frame()` para notebooks, `to_text()` para leitura e `to_dict()` para integração. Cada recomendação traz, separados:
+- a prioridade e o impacto estimado;
+- os valores atual e sugerido;
+- o score antes e depois, com o intervalo do modelo;
+- a associação com a métrica do objetivo, com a classe e as sensibilidades;
+- o suporte dos dois lados da comparação e o recorte usado;
+- a justificativa, os avisos e o próximo passo de validação.
+
+Campanhas que já seguem as práticas com evidência recebem menos sugestões, e a saída diz isso: um criativo completo, como a KLK-0003, não recebe nenhuma, em vez de uma lista preenchida sem base.
 
 ---
 
@@ -459,6 +499,7 @@ pip install -e .
 
 pytest                           # testes automatizados
 python -m klike.train            # treina o modelo final e salva em models/
+python -m klike.recommend --campanha KLK-0024   # recomendações para uma campanha
 jupyter lab notebooks/           # notebooks com a análise
 ```
 
@@ -474,6 +515,7 @@ O notebook 01 pode levar até um minuto e meio, por causa do teste de permutaç�
 
 ```
 ├── data/raw/                     dataset original, nunca alterado
+├── examples/                     campanha nova de exemplo, para a linha de comando
 ├── models/                       modelo treinado, gerado por python -m klike.train (fora do git)
 ├── notebooks/
 │   ├── 01_data_audit.ipynb       Parte 1.1: perfil e qualidade dos dados
@@ -491,6 +533,8 @@ O notebook 01 pode levar até um minuto e meio, por causa do teste de permutaç�
 │   ├── analysis.py               métricas comparáveis, efeitos e níveis de evidência
 │   ├── modeling.py               features, divisão, validação, pipelines e diagnósticos
 │   ├── evidence.py               evidências do engine: contrastes, correção e sensibilidades
+│   ├── engine.py                 recommendations engine: elegibilidade, classes, ordem e textos
+│   ├── recommend.py              comando python -m klike.recommend
 │   ├── predictor.py              modelo final: treino, arquivo salvo e previsão
 │   ├── support.py                suporte histórico: campanhas parecidas por recorte
 │   ├── train.py                  comando python -m klike.train
