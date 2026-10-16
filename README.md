@@ -28,6 +28,7 @@ A Parte 2, de modelagem, em cinco pontos:
 | 1.1 | Perfil dos dados, faltantes e outliers | [Seção](#parte-11--perfil-e-qualidade-dos-dados) e [notebook 01](notebooks/01_data_audit.ipynb) |
 | 1.2 a 1.4 | Atributos que importam, padrões por plataforma e visualizações | [Seção](#partes-12-a-14--o-que-acompanha-a-boa-performance-dos-criativos) e [notebook 02](notebooks/02_eda_insights.ipynb) |
 | 2 | Modelagem do Klike Score | [Seção](#parte-2--modelagem-do-klike-score) e [notebook 03](notebooks/03_modeling.ipynb) |
+| 3 | Recommendations engine | [Seção](#parte-3--recommendations-engine) e [notebook 04](notebooks/04_recommendations.ipynb) |
 
 ---
 
@@ -186,7 +187,7 @@ Os seis gráficos das Partes 1.2 e 1.3 foram feitos para um time de marketing. C
 ### O que isso muda nas Partes 2 e 3
 
 - **O modelo pré-veiculação tem boas chances de funcionar.** O Klike Score responde fortemente aos atributos do criativo e pouco ao público.
-- **O engine vai ser contextual, sem depender de estimativas instáveis.** O efeito geral de cada atributo serve de referência, porque é o mais preciso. Sobre ele entra o contexto da campanha: o patamar da plataforma, a checagem de formato e, quando plataforma, categoria ou objetivo tiverem campanhas suficientes, a evidência do próprio segmento, puxada em direção ao efeito geral na proporção da sua incerteza. Assim, um grupo pequeno não gera uma recomendação baseada em ruído.
+- **O engine vai ser contextual, sem depender de estimativas instáveis.** O efeito geral de cada atributo serve de referência, porque é o mais preciso. A ideia inicial era somar a ele a evidência de cada segmento, encolhida em direção ao efeito geral na proporção da sua incerteza. A Parte 3 testou essa alternativa e a descartou: a variância entre plataformas ficou em zero na maioria dos casos, e o encolhimento devolveria o próprio efeito geral. O contexto entra pelo que se aplica à campanha, pela métrica do objetivo, pelo formato dentro de cada plataforma e pelo suporte histórico, para que um grupo pequeno não gere uma recomendação baseada em ruído.
 - **Toda recomendação vai trazer seu nível de evidência e separar score de performance.** Recomendar um CTA tende a subir o score, mas não há evidência de que melhore a performance, e o engine precisa dizer isso.
 - **Duração fica fora das recomendações.** Não há evidência nesta base para sugerir mudanças.
 
@@ -366,6 +367,69 @@ As 13 features não precisam coincidir: quando há poucas campanhas parecidas, o
 
 ---
 
+## Parte 3 · Recommendations Engine
+
+> Notebook completo: [`notebooks/04_recommendations.ipynb`](notebooks/04_recommendations.ipynb)
+
+O engine recebe uma campanha e sugere edições no vídeo, ordenadas por prioridade. Esta seção registra o desenho e as evidências que ele usa; o engine e a avaliação nas 500 campanhas entram aqui quando forem concluídos.
+
+### Três camadas que não se misturam
+
+| Camada | O que diz | De onde vem |
+| :-- | :-- | :-- |
+| Diferença prevista de score | Quanto o modelo final prevê de diferença ao editar só uma característica | O modelo da Parte 2, com intervalo por bootstrap de todo o treino; não é o MAE |
+| Associação com performance | Quanto a métrica do objetivo difere entre campanhas parecidas, com e sem a característica | O contraste exato de cada edição nas regressões da Parte 1 |
+| Qualidade da evidência | Quanto essa associação resiste à multiplicidade e às escolhas de análise | Benjamini-Hochberg sobre 70 hipóteses e duas sensibilidades |
+
+Ao lado delas, o suporte histórico conta as campanhas parecidas dos dois lados da comparação: é informação de contexto, não de evidência. Nenhuma camada mede efeito causal, e nenhuma classe de evidência é uma probabilidade de sucesso.
+
+### O que a base sustenta
+
+As 14 edições avaliadas, em 5 métricas de performance, formam uma família de 70 hipóteses. Ela inclui as edições descartadas, para que a correção não fique otimista:
+
+| Edição | Score previsto | Associação com performance | Decisão |
+| :-- | :-- | :-- | :-- |
+| Hook: não → sim | +17,0 | CTR +51%, engajamento +38%, retenção +39%, conversões por mil +48%; todas robustas | Entra |
+| Rosto: não → sim | +11,8 | CTR +23%, engajamento +43%, conversões por mil +29%, robustas; retenção, indício | Entra |
+| Texto: alto → médio | +14,0 | Retenção +29%, robusta; conversões e ROAS dependem das correções por plausibilidade | Entra |
+| Formato na Meta: horizontal → vertical | +4,7 | Engajamento +63%, robusto; CTR inconclusivo, com sinal desfavorável | Entra |
+| Legenda, CTA e texto baixo → médio | +6,8 a +8,3 | Nenhuma associação | Só como oportunidade de score, para teste A/B |
+| Formato no TikTok: quadrado → vertical | +3,3 | Inconclusiva; o intervalo do score começa em 0,01 | Só como candidata experimental, com aviso de ganho limítrofe |
+| Formato no LinkedIn: vertical ou quadrado → horizontal | +8,1 e +5,5 | Inconclusiva, com intervalos largos; só 11 vídeos verticais | Só como oportunidade de score, com aviso de extrapolação |
+| Formato na Meta: quadrado → vertical | −0,8 | Nenhuma associação | Descartada |
+| Duração | ≈ 0 | Nenhuma associação, com intervalos estreitos | Descartada |
+| Música/voz, +0,1 | −0,5 | Retenção +3,9%; nada nas outras métricas | Descartada: conflito pequeno entre score e retenção |
+
+O enunciado sugere, como exemplo, reduzir a duração no TikTok. Nesta base, dobrar a duração fica entre −8% e +10% no CTR e entre −6% e +6% na retenção: não há o que recomendar.
+
+### Sensibilidades
+
+- **O texto depende de 5 correções por plausibilidade da Parte 1.** Sem elas, as conversões de texto alto → médio caem de robustas para indício. A retenção não muda.
+- **Na legenda, os modelos discordam.** Em conversões, a regressão em log é inconclusiva, e a binomial negativa, que mantém as 19 campanhas sem conversão, encontra +23%. A legenda segue sem evidência de performance, com essa ressalva registrada.
+- **Hook e rosto são estáveis em todas as análises.**
+- **Estabilidade é da classe, não da estimativa.** 65 das 70 hipóteses mantêm a classe em todas as sensibilidades, mas as magnitudes variam entre as análises. Em 4 contrastes inconclusivos, com estimativas de até 1,1% em módulo, o sinal chega a se inverter.
+
+### Como o engine vai decidir
+
+- **Contexto sem personalização artificial.** As edições aplicáveis dependem do que a campanha já tem, o formato é estimado dentro de cada plataforma, e o objetivo define a métrica. Os efeitos de hook, rosto e texto são gerais: a variância entre plataformas estimada é zero em 9 das 12 combinações testadas, então estimativas encolhidas por plataforma devolveriam o próprio efeito geral.
+- **Métrica pelo objetivo:**
+  - traffic, CTR;
+  - engagement, engajamento;
+  - awareness, retenção, como proxy de atenção;
+  - conversions e app_install, conversões por mil impressões.
+- **Três classes:**
+  - **A:** associação robusta e estável;
+  - **B:** indício, ou robusta mas sensível;
+  - **C:** ganho de score sem evidência de performance, apresentado como hipótese para teste.
+- **Prioridade:** primeiro a classe, depois o impacto estimado. Prioridade não é impacto: uma recomendação B pode ter impacto estimado maior que uma A e ficar atrás.
+- **Mínimo de três:** o engine lista todas as recomendações defensáveis e diz quando elas são menos de três, sem completar a lista.
+- **Suporte histórico:** campanhas com o valor atual e com o sugerido, do recorte mais específico ao mais amplo, com pelo menos 10 de cada lado. Suporte baixo vira aviso de extrapolação e não muda a classe de evidência.
+- **Score da campanha concreta:** o score antes e depois de cada edição vem do preditor, dentro da escala de 0 a 100. A tabela de diferenças, com seus intervalos, é evidência complementar.
+
+As duas tabelas de evidências ficam em `reports/`, com estimativa, intervalo, tamanho de cada lado, classe, sensibilidades e limitações de cada linha.
+
+---
+
 ## Limitações
 
 - **Associação, não causa.** Os efeitos da EDA e os do modelo comparam campanhas parecidas, mas algo não observado, como a qualidade da oferta, pode andar junto com o atributo. Testes A/B confirmariam.
@@ -379,6 +443,7 @@ As 13 features não precisam coincidir: quando há poucas campanhas parecidas, o
 - **Há poucos vídeos longos no TikTok:** só 5 passam de 30 segundos, então a base não testa vídeos longos nessa plataforma.
 - **A exploração inicial da Parte 2 viu as 500 campanhas,** como a EDA, inclusive as que depois foram para o teste. O teste final não é totalmente intocado em relação às escolhas do plano: o protocolo limita esse efeito, e o resultado compatível com a validação cruzada o atenua, mas nenhum dos dois o elimina.
 - **Não há identificador de criativo.** Nenhuma campanha repete todas as variáveis de pré-publicação de outra, mas isso não prova que versões do mesmo anúncio não estejam em lados diferentes da divisão entre desenvolvimento e teste.
+- **As evidências do recommendations engine são exploratórias.** A família de 70 hipóteses foi definida depois da EDA: a correção controla a multiplicidade dentro dela, mas não o fato de já termos visto os dados. Toda recomendação é uma hipótese para teste A/B.
 
 ---
 
@@ -400,10 +465,10 @@ jupyter lab notebooks/           # notebooks com a análise
 Para reexecutar os notebooks do zero e regenerar as figuras:
 
 ```bash
-jupyter nbconvert --to notebook --execute --inplace notebooks/01_data_audit.ipynb notebooks/02_eda_insights.ipynb notebooks/03_modeling.ipynb
+jupyter nbconvert --to notebook --execute --inplace notebooks/01_data_audit.ipynb notebooks/02_eda_insights.ipynb notebooks/03_modeling.ipynb notebooks/04_recommendations.ipynb
 ```
 
-O notebook 01 pode levar até um minuto e meio, por causa do teste de permutação dos faltantes, e o 03, cerca de três minutos, por causa da validação cruzada aninhada.
+O notebook 01 pode levar até um minuto e meio, por causa do teste de permutação dos faltantes; o 03, cerca de três minutos, por causa da validação cruzada aninhada; e o 04, cerca de meio minuto, por causa do bootstrap das diferenças de score. O 01 e o 04 também regravam as tabelas em `reports/`.
 
 ## Estrutura do repositório
 
@@ -413,15 +478,19 @@ O notebook 01 pode levar até um minuto e meio, por causa do teste de permutaç�
 ├── notebooks/
 │   ├── 01_data_audit.ipynb       Parte 1.1: perfil e qualidade dos dados
 │   ├── 02_eda_insights.ipynb     Partes 1.2 a 1.4: o que acompanha a performance
-│   └── 03_modeling.ipynb         Parte 2: modelagem do Klike Score
+│   ├── 03_modeling.ipynb         Parte 2: modelagem do Klike Score
+│   └── 04_recommendations.ipynb  Parte 3: recommendations engine
 ├── reports/
 │   ├── data_corrections.csv      log de auditoria: cada correção, sua base e evidência
+│   ├── recommendation_evidence.csv  associação de cada edição com a performance, com classe
+│   ├── score_differences.csv     diferença de score prevista de cada edição, com intervalo
 │   └── figures/                  gráficos exportados
 ├── src/klike/                    código reutilizável, importado pelos notebooks
 │   ├── config.py                 caminhos, grupos de colunas e constantes
 │   ├── data.py                   carregamento, validação e limpeza
 │   ├── analysis.py               métricas comparáveis, efeitos e níveis de evidência
 │   ├── modeling.py               features, divisão, validação, pipelines e diagnósticos
+│   ├── evidence.py               evidências do engine: contrastes, correção e sensibilidades
 │   ├── predictor.py              modelo final: treino, arquivo salvo e previsão
 │   ├── support.py                suporte histórico: campanhas parecidas por recorte
 │   ├── train.py                  comando python -m klike.train
