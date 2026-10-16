@@ -29,10 +29,12 @@ from klike.modeling import (
 )
 from klike.predictor import (
     CERTIFIED_METRICS,
+    FILE_FORMAT,
     KlikeScorePredictor,
     data_sha256,
     train_final_model,
 )
+from klike.support import MUSIC_HUNDREDTHS
 from klike.train import main
 
 CAMPAIGN = {
@@ -255,6 +257,19 @@ def test_loading_explains_how_to_recreate_a_missing_or_unknown_file(tmp_path):
     joblib.dump({"formato": 999}, tmp_path / "antigo.joblib")
     with pytest.raises(ValueError, match="formato desconhecido"):
         KlikeScorePredictor.load(tmp_path / "antigo.joblib")
+
+
+def test_files_saved_before_the_music_support_must_be_recreated(predictor, tmp_path):
+    # O formato 1 guardava o suporte sem a música/voz em centésimos.
+    path = predictor.save(tmp_path / "modelo.joblib")
+    assert joblib.load(path)["formato"] == FILE_FORMAT == 2
+    assert MUSIC_HUNDREDTHS in KlikeScorePredictor.load(path).support.profiles
+    old = joblib.load(path)
+    old["formato"] = 1
+    old["suporte"] = old["suporte"].drop(columns=MUSIC_HUNDREDTHS)
+    joblib.dump(old, path)
+    with pytest.raises(ValueError, match="formato desconhecido. Gere o arquivo de novo"):
+        KlikeScorePredictor.load(path)
 
 
 def test_loading_warns_when_scikit_learn_changed(predictor, tmp_path):

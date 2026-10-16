@@ -175,7 +175,8 @@ def fit_negative_binomial(
         f"{count} ~ {_rhs(controls, extra)}", data=data, offset=np.log(data[exposure])
     )
     fit = model.fit(method="newton", maxiter=100, disp=0, cov_type="HC0")
-    if not fit.mle_retvals["converged"]:
+    # Com poucas campanhas, o otimizador pode declarar convergência com parâmetros NaN.
+    if not fit.mle_retvals["converged"] or not np.isfinite(fit.params).all():
         raise RuntimeError(f"A binomial negativa não convergiu para {count!r}.")
     return fit
 
