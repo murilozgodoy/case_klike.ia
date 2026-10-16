@@ -104,6 +104,11 @@ class FeatureSpec:
 
 BASE_SPEC = FeatureSpec()
 
+# Especificação escolhida nos experimentos formais (notebook 03, seção 6): a Ridge venceu
+# o M1, e só a interação plataforma × formato (F3) melhorou o modelo de forma consistente.
+SELECTED_MODEL = "ridge"
+SELECTED_SPEC = FeatureSpec(platform_format=True)
+
 # Espaços de hiperparâmetros, pequenos de propósito (ver o protocolo no notebook 03).
 PARAM_GRIDS = {
     "ridge": {"model__alpha": [0.01, 0.1, 1.0, 10.0, 100.0]},
@@ -471,7 +476,9 @@ def evaluate_on_splits(
     """Ajusta o candidato em cada partição e mede o erro na parte de validação.
 
     Devolve uma linha por partição, com MAE (a métrica principal), RMSE, R² e Spearman.
-    Como todos os candidatos usam as mesmas partições, as comparações são pareadas.
+    Para candidatos com ajuste interno, registra também os hiperparâmetros escolhidos em
+    cada partição. Como todos os candidatos usam as mesmas partições, as comparações são
+    pareadas.
     """
     rows = []
     for number, (train, valid) in enumerate(splits):
@@ -485,9 +492,35 @@ def evaluate_on_splits(
                 "rmse": root_mean_squared_error(actual, predicted),
                 "r2": r2_score(actual, predicted),
                 "spearman": _spearman(actual, predicted),
+                "hiperparametros": getattr(fitted, "best_params_", None),
             }
         )
     return pd.DataFrame(rows)
+
+
+def compare_on_splits(
+    candidate: pd.DataFrame, reference: pd.DataFrame, metric: str = "mae"
+) -> pd.Series:
+    """Compara dois candidatos avaliados nas mesmas partições, por uma métrica de erro.
+
+    Devolve a melhora média do candidato sobre a referência (positiva quando o candidato
+    erra menos), a melhora relativa, o desvio dessa diferença entre partições e a fração
+    de partições em que o candidato erra menos. As partições repetidas compartilham
+    campanhas: essa fração indica estabilidade, não significância estatística.
+    """
+    if metric not in ("mae", "rmse"):
+        raise ValueError(f"Métrica de erro desconhecida: {metric!r} (use 'mae' ou 'rmse').")
+    if not candidate["particao"].equals(reference["particao"]):
+        raise ValueError("Os candidatos precisam ser avaliados nas mesmas partições.")
+    gain = reference[metric].to_numpy() - candidate[metric].to_numpy()
+    return pd.Series(
+        {
+            "melhora": gain.mean(),
+            "melhora_relativa": gain.mean() / reference[metric].mean(),
+            "desvio": gain.std(ddof=1),
+            "vitorias": (gain > 0).mean(),
+        }
+    )
 
 
 def _spearman(actual: np.ndarray, predicted: np.ndarray) -> float:

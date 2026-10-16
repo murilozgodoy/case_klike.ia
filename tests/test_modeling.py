@@ -28,9 +28,12 @@ from klike.modeling import (
     PARAM_GRIDS,
     POST_FLIGHT_RATES,
     PRE_FLIGHT_INPUTS,
+    SELECTED_MODEL,
+    SELECTED_SPEC,
     FeatureSpec,
     PlatformFormatInteractions,
     build_pipeline,
+    compare_on_splits,
     evaluate_on_splits,
     outer_splits,
     prepare_features,
@@ -346,11 +349,37 @@ def test_evaluate_on_splits_compares_candidates_on_the_same_partitions():
     splits = list(KFold(5, shuffle=True, random_state=0).split(features))
     ridge = evaluate_on_splits(build_pipeline("ridge"), features, score, splits)
     dummy = evaluate_on_splits(build_pipeline("dummy"), features, score, splits)
-    assert list(ridge.columns) == ["particao", "mae", "rmse", "r2", "spearman"]
+    assert list(ridge.columns) == ["particao", "mae", "rmse", "r2", "spearman", "hiperparametros"]
     assert len(ridge) == len(dummy) == 5
     assert (ridge["rmse"] >= ridge["mae"]).all()
     assert (ridge["mae"] < dummy["mae"]).all()  # o efeito do hook existe e é aprendido
     assert dummy["spearman"].isna().all()  # previsão constante não ordena nada
+    assert dummy["hiperparametros"].isna().all()  # nada foi ajustado
+
+
+def test_tuned_candidates_record_the_hyperparameters_of_each_partition():
+    features, score = _synthetic()
+    splits = list(KFold(3, shuffle=True, random_state=0).split(features))
+    folds = evaluate_on_splits(tuned("ridge"), features, score, splits)
+    grid = PARAM_GRIDS["ridge"]["model__alpha"]
+    assert all(params["model__alpha"] in grid for params in folds["hiperparametros"])
+
+
+def test_compare_on_splits_reports_paired_gains():
+    reference = pd.DataFrame({"particao": [0, 1, 2, 3], "mae": [10.0, 10.0, 10.0, 10.0]})
+    candidate = pd.DataFrame({"particao": [0, 1, 2, 3], "mae": [9.0, 9.5, 10.5, 9.0]})
+    result = compare_on_splits(candidate, reference)
+    assert result["melhora"] == pytest.approx(0.5)
+    assert result["melhora_relativa"] == pytest.approx(0.05)
+    assert result["vitorias"] == pytest.approx(0.75)
+
+
+def test_compare_on_splits_requires_the_same_partitions_and_an_error_metric():
+    reference = pd.DataFrame({"particao": [0, 1], "mae": [1.0, 1.0], "r2": [0.5, 0.5]})
+    with pytest.raises(ValueError, match="mesmas partições"):
+        compare_on_splits(reference.assign(particao=[1, 2]), reference)
+    with pytest.raises(ValueError, match="Métrica de erro"):
+        compare_on_splits(reference, reference, metric="r2")
 
 
 def test_ridge_recovers_a_known_effect_in_points():
@@ -358,6 +387,16 @@ def test_ridge_recovers_a_known_effect_in_points():
     pipeline = build_pipeline("ridge", alpha=0.01).fit(features, score)
     coefficients = dict(zip(_feature_names(pipeline), pipeline[-1].coef_, strict=True))
     assert coefficients["has_hook"] == pytest.approx(12, abs=1)
+
+
+def test_selected_specification_builds_a_linear_model_with_supported_interactions():
+    features, score = _synthetic()
+    search = tuned(SELECTED_MODEL, SELECTED_SPEC).fit(features, score)
+    names = _feature_names(search.best_estimator_)
+    assert SELECTED_MODEL == "ridge"
+    assert FeatureSpec(platform_format=True) == SELECTED_SPEC
+    assert "LinkedIn × horizontal" in names
+    assert not any(name.startswith("missingindicator") for name in names)
 
 
 def test_hyperparameters_are_tuned_within_a_small_declared_grid():
