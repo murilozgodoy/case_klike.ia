@@ -15,12 +15,13 @@ A Parte 1, de análise exploratória, em seis pontos:
 - **Duração não mostra efeito detectável** em nenhuma plataforma.
 - **O Klike Score responde mais ao criativo que ao público,** mas dá pontos a legenda, CTA e texto médio, que não mostram efeito robusto em performance. Vale validar esses pesos.
 
-A Parte 2, de modelagem, em quatro pontos:
+A Parte 2, de modelagem, em cinco pontos:
 
 - **Dá para prever o score antes de gastar.** Um modelo linear (Ridge) com o contexto da campanha e os atributos do criativo erra 6,4 pontos em média nas 100 campanhas reservadas para o teste final, numa escala de 0 a 100. É 45% menos que prever a média, compatível com a validação cruzada.
 - **O modelo separa bem criativos bons de fracos, mas não crava números.** Quando ele prevê 10 pontos ou mais de diferença entre dois criativos da mesma plataforma, o apontado como melhor tem de fato o score maior em 93% dos pares do desenvolvimento, numa análise exploratória. Abaixo de 5 pontos previstos, a comparação é pouco melhor que um chute. Nos extremos, as previsões são puxadas para o centro, e no LinkedIn o erro tende a ser maior.
 - **Ele aprendeu o que a EDA mostrou.** Hook, rosto e densidade de texto são o que mais pesa na previsão, com efeitos em pontos próximos aos da Parte 1. Isso mostra o que ajuda a prever, não o que causa o score.
 - **Nesta base simulada, a performance realizada explica só parte do score.** Um modelo comparativo que acrescenta CTR, conversão e outras taxas, conhecidas só depois do gasto, erra cerca de 1 ponto a menos. Mesmo nele, o criativo pesa mais que as taxas.
+- **O modelo está pronto para uso.** Um comando recria o modelo final, e uma única chamada valida uma campanha nova e devolve o score previsto. O arquivo também guarda quantas campanhas parecidas existem para cada combinação de atributos, para a Parte 3 não extrapolar.
 
 | Parte | Pergunta do desafio | Onde está |
 | :-- | :-- | :-- |
@@ -195,7 +196,7 @@ Os seis gráficos das Partes 1.2 e 1.3 foram feitos para um time de marketing. C
 
 > Notebook completo: [`notebooks/03_modeling.ipynb`](notebooks/03_modeling.ipynb)
 
-A modelagem segue um protocolo definido antes dos experimentos formais. Esta seção resume as decisões, a certificação no teste e a interpretação do modelo; o notebook traz os detalhes. O modelo salvo e a interface de previsão entram aqui quando forem concluídos.
+A modelagem segue um protocolo definido antes dos experimentos formais. Esta seção resume as decisões, a certificação no teste, a interpretação e o uso do modelo final; o notebook traz os detalhes.
 
 ### Dois cenários, um principal
 
@@ -305,6 +306,64 @@ Com as sete taxas de performance, o mesmo protocolo e a mesma especificação, o
 - **O recommendations engine, na Parte 3, parte dos efeitos do modelo.** Cada sugestão traz o nível de evidência da Parte 1 sobre performance, o LinkedIn pede mais cautela e combinações sem suporte, como TikTok horizontal, não recebem recomendação.
 - **Vale validar com a Klike os pesos do score** para legenda, CTA e texto médio, lembrando que este score é simulado.
 
+### Modelo final: como treinar e usar
+
+O modelo final é a especificação certificada, a Ridge com a interação plataforma × formato e penalização alpha 1, reajustada nas 500 campanhas sem nova busca de hiperparâmetros. Como o reajuste também treina com as campanhas do teste, ele não ganha métrica própria: as oficiais são as da certificação. O reajuste muda pouco o modelo: nenhum efeito muda de sinal, e as alavancas do criativo variam no máximo 0,6 ponto.
+
+**Treinar e salvar.** Um comando reajusta o modelo e salva, num arquivo joblib, o pipeline completo, o suporte histórico e os metadados:
+
+```bash
+python -m klike.train
+```
+
+```
+Modelo salvo em models/klike_score_model.joblib
+Treino: 500 campanhas de klike_challenge_dataset.csv | alpha 1 | interações: TikTok × quadrado, LinkedIn × quadrado, LinkedIn × horizontal
+Métricas oficiais, da certificação: MAE 6,43 (intervalo de 95%: 5,55 a 7,33)
+```
+
+O arquivo não vai para o repositório: o comando o recria a partir do CSV. Os metadados registram a especificação, as entradas aceitas, as métricas oficiais, a impressão digital (SHA-256) do arquivo de dados e as versões usadas. O modelo foi gerado com Python 3.13.3, scikit-learn 1.9.1, numpy 2.5.4, pandas 2.3.3 e joblib 1.6.0. Ao carregar com outra versão do scikit-learn, um aviso recomenda gerar o arquivo de novo.
+
+**Carregar e prever.** Uma única chamada valida a campanha, prepara as features, aplica o pipeline e limita o score à escala de 0 a 100:
+
+```python
+from klike.predictor import KlikeScorePredictor
+
+predictor = KlikeScorePredictor.load()  # models/klike_score_model.joblib
+campanha = {
+    "platform": "TikTok",
+    "category": "E-commerce",
+    "objective": "conversions",
+    "target_audience_age": "18-24",
+    "is_retargeting": False,
+    "video_duration_s": 15,      # opcional
+    "format": "vertical",
+    "has_subtitle": True,        # opcional
+    "has_cta": True,
+    "has_hook": True,
+    "has_face": True,
+    "text_density": "medium",
+    "music_voice_ratio": 0.4,    # opcional
+}
+scores = predictor.predict(campanha)  # pd.Series, um score por campanha
+round(scores.iloc[0], 1)              # 88.3
+```
+
+- **Entrada:** um dicionário, uma lista de dicionários ou um DataFrame, com os campos em qualquer ordem.
+- **Campos opcionais:** duração, legenda e música/voz podem faltar. O pipeline imputa a mediana do treino, e a legenda sem marcação vira uma categoria própria.
+- **Métricas de performance não são necessárias.** Colunas do histórico, como CTR ou ROAS, são ignoradas se vierem junto.
+- **Erros claros:** categorias desconhecidas, valores inválidos e campos com nome errado geram um erro que lista todos os problemas, como `platform: valor desconhecido ['YouTube'] (aceitos: Meta, TikTok, LinkedIn)`.
+
+**Suporte histórico, para a Parte 3.** O arquivo guarda os atributos de pré-publicação das 500 campanhas, sem score nem métricas, para contar campanhas parecidas em qualquer recorte:
+
+```python
+predictor.support.count(platform="TikTok", format="horizontal")  # 0: o score seria extrapolação
+predictor.support.count(platform="LinkedIn", format="vertical")   # 11
+predictor.support.counts_for(campanha, [["platform", "format", "category"], ["platform"], []])
+```
+
+As 13 features não precisam coincidir: quando há poucas campanhas parecidas, o recorte pode ser alargado. O recommendations engine vai usar essas contagens para sinalizar incerteza e evitar extrapolações. O suporte conta campanhas, mas não mede se um efeito vale naquele grupo.
+
 ---
 
 ## Limitações
@@ -313,6 +372,8 @@ Com as sete taxas de performance, o mesmo protocolo e a mesma especificação, o
 - **A base é pequena e simulada.** São 500 campanhas, e só 83 no LinkedIn, onde os intervalos de confiança ficam largos. É também onde o modelo erra mais, e o vídeo vertical no LinkedIn tem só 11 campanhas.
 - **O teste tem 100 campanhas.** O intervalo do MAE vai de 5,55 a 7,33 pontos: o teste confirma a ordem de grandeza do erro, mas não distingue diferenças de menos de cerca de 1 ponto, e por plataforma é só descritivo, com margens aproximadas. O bootstrap reamostra as campanhas do teste com o modelo fixo, então não inclui a incerteza de um novo treinamento.
 - **As previsões são conservadoras nos extremos.** Um criativo excepcional tende a receber nota abaixo da real, e um muito fraco, acima.
+- **O modelo final não tem métrica própria.** Ele treina também com as campanhas do teste; uma nova avaliação independente exigiria campanhas novas.
+- **Combinações sem suporte histórico ainda recebem score,** por extrapolação, como vídeo horizontal no TikTok. O suporte histórico permite identificá-las, mas o modelo não as recusa.
 - **CTR e engajamento parecem ter teto de registro:** muitos valores exatamente em 15% e 10%, e nenhum acima. Se for censura, as estimativas sobre essas métricas podem estar distorcidas, e a direção do viés depende de quais campanhas bateram no teto.
 - **MNAR não pode ser descartado em música/voz e engajamento,** porque nenhuma variável observada é correlacionada o bastante com elas para servir de pista. Os testes mostram que a ausência é compatível com acaso, não que seja aleatória. Os indicadores de ausência testados na Parte 2 não trouxeram ganho e ficaram de fora; mesmo que entrassem, não corrigiriam um viés desse tipo.
 - **Há poucos vídeos longos no TikTok:** só 5 passam de 30 segundos, então a base não testa vídeos longos nessa plataforma.
@@ -332,6 +393,7 @@ pip install -r requirements-dev.txt
 pip install -e .
 
 pytest                           # testes automatizados
+python -m klike.train            # treina o modelo final e salva em models/
 jupyter lab notebooks/           # notebooks com a análise
 ```
 
@@ -347,6 +409,7 @@ O notebook 01 pode levar até um minuto e meio, por causa do teste de permutaç�
 
 ```
 ├── data/raw/                     dataset original, nunca alterado
+├── models/                       modelo treinado, gerado por python -m klike.train (fora do git)
 ├── notebooks/
 │   ├── 01_data_audit.ipynb       Parte 1.1: perfil e qualidade dos dados
 │   ├── 02_eda_insights.ipynb     Partes 1.2 a 1.4: o que acompanha a performance
@@ -359,6 +422,9 @@ O notebook 01 pode levar até um minuto e meio, por causa do teste de permutaç�
 │   ├── data.py                   carregamento, validação e limpeza
 │   ├── analysis.py               métricas comparáveis, efeitos e níveis de evidência
 │   ├── modeling.py               features, divisão, validação, pipelines e diagnósticos
+│   ├── predictor.py              modelo final: treino, arquivo salvo e previsão
+│   ├── support.py                suporte histórico: campanhas parecidas por recorte
+│   ├── train.py                  comando python -m klike.train
 │   ├── formatting.py             números no padrão brasileiro
 │   └── viz.py                    estilo visual único dos gráficos
 └── tests/                        testes automatizados (pytest)
