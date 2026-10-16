@@ -1,0 +1,761 @@
+"""Modelagem do Klike Score: features declaradas, divisão dos dados, validação e pipelines.
+
+Dois cenários, separados pelo momento em que a informação existe:
+
+- Modelo A, pré-publicação (principal): só o contexto da campanha e os atributos do
+  criativo, conhecidos antes da veiculação. É o que pode pontuar um criativo novo e
+  apoiar o recommendations engine.
+- Modelo B, pós-publicação (comparativo): acrescenta taxas de performance. Mede quanto
+  do score acompanha o que só se sabe depois do gasto. Não serve para avaliar um
+  criativo que ainda não foi veiculado.
+
+A preparação das features é determinística e é a mesma no treino e na inferência. Tudo
+o que aprende com os dados (imputação, escala, codificação) fica dentro do pipeline e é
+ajustado só no treino de cada partição.
+"""
+
+from __future__ import annotations
+
+from collections import Counter
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+from sklearn.base import BaseEstimator, TransformerMixin, clone
+from sklearn.compose import ColumnTransformer
+from sklearn.dummy import DummyRegressor
+from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.impute import MissingIndicator, SimpleImputer
+from sklearn.linear_model import Ridge
+from sklearn.metrics import mean_absolute_error, r2_score, root_mean_squared_error
+from sklearn.model_selection import (
+    GridSearchCV,
+    KFold,
+    RepeatedStratifiedKFold,
+    train_test_split,
+)
+from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, OrdinalEncoder, StandardScaler
+from sklearn.utils.validation import check_is_fitted
+
+from klike.analysis import add_rate_metrics
+from klike.config import (
+    CATEGORY_ORDERS,
+    CONTEXT_COLS,
+    CREATIVE_COLS,
+    DATE_COL,
+    FLAG_COLS,
+    ID_COL,
+    PERFORMANCE_COLS,
+    TARGET,
+)
+
+RANDOM_STATE = 42
+TEST_SIZE = 0.2  # 400 campanhas de desenvolvimento e 100 de teste final
+N_SPLITS = 5
+N_REPEATS = 5  # 25 partições externas, as mesmas para todos os candidatos
+INNER_FOLDS = 3  # ajuste de hiperparâmetros dentro do treino de cada partição externa
+
+# --------------------------------------------------------------------------- #
+# Features declaradas
+# --------------------------------------------------------------------------- #
+# Entradas do modelo A: as 13 colunas do dataset que existem antes da veiculação.
+PRE_FLIGHT_INPUTS = CONTEXT_COLS + CREATIVE_COLS
+# Podem faltar, como no histórico. As demais são obrigatórias.
+OPTIONAL_INPUTS = ["video_duration_s", "has_subtitle", "music_voice_ratio"]
+# Colunas do histórico que podem acompanhar uma campanha e que o modelo ignora:
+# identificação, data, o próprio score, métricas de performance e marcações da limpeza.
+HISTORICAL_FIELDS = [ID_COL, DATE_COL, TARGET, *PERFORMANCE_COLS, *FLAG_COLS]
+
+# Colunas que o modelo A recebe depois da preparação, em ordem fixa.
+CATEGORICAL_FEATURES = [
+    "platform",
+    "category",
+    "objective",
+    "target_audience_age",
+    "format",
+    "text_density",
+    "subtitle_status",
+]
+BINARY_FEATURES = ["is_retargeting", "has_hook", "has_face", "has_cta"]
+NUMERIC_FEATURES = ["video_duration_s", "music_voice_ratio"]
+MODEL_A_FEATURES = CATEGORICAL_FEATURES + BINARY_FEATURES + NUMERIC_FEATURES
+
+# Legenda ausente é uma categoria: o criativo não foi marcado, o que acontece também
+# em produção. A primeira categoria de cada lista é a referência do modelo linear.
+SUBTITLE_STATUS = ["não", "sim", "desconhecido"]
+CATEGORIES = {
+    **{col: CATEGORY_ORDERS[col] for col in CATEGORICAL_FEATURES if col != "subtitle_status"},
+    "subtitle_status": SUBTITLE_STATUS,
+}
+PLATFORM_FORMATS = [f"{p} | {f}" for p in CATEGORIES["platform"] for f in CATEGORIES["format"]]
+
+# Taxas que o modelo B acrescenta. Volumes (impressões, gasto) ficam de fora: medem verba.
+POST_FLIGHT_RATES = [
+    "ctr",
+    "engagement_rate",
+    "completion_rate",
+    "conversion_rate",
+    "conversions_per_mille",
+    "cpc",
+    "roas",
+]
+MODEL_B_FEATURES = MODEL_A_FEATURES + POST_FLIGHT_RATES
+
+
+@dataclass(frozen=True)
+class FeatureSpec:
+    """Opções de features testadas nos experimentos F1 a F3. Todas desligadas na base."""
+
+    missing_indicators: bool = False  # F1: indicadores de ausência de duração e música
+    log_duration: bool = False  # F2: duração em log (só faz sentido no modelo linear)
+    platform_format: bool = False  # F3: interação entre plataforma e formato
+
+
+BASE_SPEC = FeatureSpec()
+
+# Especificação escolhida nos experimentos formais (notebook 03, seção 6): a Ridge venceu
+# o M1, e só a interação plataforma × formato (F3) melhorou o modelo de forma consistente.
+SELECTED_MODEL = "ridge"
+SELECTED_SPEC = FeatureSpec(platform_format=True)
+# Penalização da Ridge na certificação (notebook 03, seção 7), escolhida pela validação
+# interna nas 400 campanhas de desenvolvimento. O modelo final reutiliza o valor, sem nova
+# busca, para não reabrir a seleção de hiperparâmetros.
+SELECTED_PARAMS = {"alpha": 1.0}
+
+# Espaços de hiperparâmetros, pequenos de propósito (ver o protocolo no notebook 03).
+PARAM_GRIDS = {
+    "ridge": {"model__alpha": [0.01, 0.1, 1.0, 10.0, 100.0]},
+    "hgb": {
+        "model__learning_rate": [0.05, 0.1],
+        "model__max_leaf_nodes": [4, 8],
+        "model__min_samples_leaf": [10, 30],
+    },
+}
+# Iterações fixas, sem early stopping: ele reservaria parte de um treino que já é pequeno
+# (320 campanhas por partição) para a validação interna. A semente garante a reprodução.
+HGB_FIXED = {"max_iter": 200, "early_stopping": False}
+# Mínimo de campanhas no treino para uma combinação de plataforma e formato virar coluna
+# de interação (F3). Abaixo disso, o coeficiente dependeria de poucas campanhas.
+MIN_INTERACTION_SUPPORT = 10
+
+
+# --------------------------------------------------------------------------- #
+# Preparação e validação
+# --------------------------------------------------------------------------- #
+def prepare_features(
+    campaigns: pd.DataFrame | Mapping | Sequence[Mapping], *, strict: bool = False
+) -> pd.DataFrame:
+    """Converte campanhas no formato do modelo A, validando cada campo.
+
+    Aceita um dicionário (uma campanha), uma lista de dicionários ou um DataFrame. Usa
+    só as 13 colunas de pré-publicação: colunas extras, como métricas de performance,
+    são ignoradas. Não depende da limpeza do histórico, que exige métricas que uma
+    campanha nova ainda não tem. Entradas inválidas geram um erro que lista os problemas.
+
+    Com ``strict=True``, usado na previsão de campanhas novas, só são aceitas as colunas de
+    pré-publicação e as do histórico (``HISTORICAL_FIELDS``). Assim, um campo opcional com
+    o nome digitado errado gera erro, em vez de virar um valor ausente em silêncio.
+    """
+    frame = _as_frame(campaigns)
+    _validate(frame, strict=strict)
+    out = pd.DataFrame(index=frame.index)
+    for col in CATEGORICAL_FEATURES:
+        if col == "subtitle_status":
+            values = _optional(frame, "has_subtitle").map(_subtitle_status)
+        else:
+            values = frame[col].astype(object)
+        out[col] = pd.Categorical(values, categories=CATEGORIES[col])
+    for col in BINARY_FEATURES:
+        out[col] = frame[col].astype(object).map(bool).astype(int)
+    for col in NUMERIC_FEATURES:
+        out[col] = pd.to_numeric(_optional(frame, col), errors="coerce").astype(float)
+    return out
+
+
+def prepare_post_flight_features(cleaned: pd.DataFrame) -> pd.DataFrame:
+    """Modelo B (comparativo): as features do modelo A mais taxas de performance.
+
+    Exige a base histórica limpa, porque as taxas vêm de métricas corrigidas na Parte 1.
+    ROAS não se aplica a Branding: ali ele vale 0, e a categoria Branding, que já está no
+    modelo, absorve a diferença de nível. Assim, a relação com o ROAS é aprendida só com
+    as campanhas que medem receita.
+    """
+    rates = add_rate_metrics(cleaned)
+    out = prepare_features(cleaned)
+    for col in POST_FLIGHT_RATES:
+        if col == "roas":
+            out[col] = rates["roas"].where(rates["flag_roas_applicable"], 0.0).astype(float)
+        else:
+            out[col] = rates[col].astype(float)
+    return out
+
+
+def _as_frame(campaigns: pd.DataFrame | Mapping | Sequence[Mapping]) -> pd.DataFrame:
+    if isinstance(campaigns, pd.DataFrame):
+        return campaigns
+    if isinstance(campaigns, Mapping):
+        return pd.DataFrame([campaigns])
+    return pd.DataFrame(list(campaigns))
+
+
+def _optional(frame: pd.DataFrame, col: str) -> pd.Series:
+    """Coluna opcional; se não vier na entrada, conta como ausente em todas as linhas."""
+    if col in frame.columns:
+        return frame[col].astype(object)
+    return pd.Series([None] * len(frame), index=frame.index, dtype=object)
+
+
+def _is_missing(value) -> bool:
+    return value is None or (not isinstance(value, str) and bool(pd.isna(value)))
+
+
+def _is_bool(value) -> bool:
+    """Aceita True/False e 0/1, como vêm de CSV, JSON ou do tipo boolean do pandas."""
+    if isinstance(value, bool | np.bool_):
+        return True
+    return isinstance(value, int | np.integer | float | np.floating) and value in (0, 1)
+
+
+def _subtitle_status(value) -> str:
+    if _is_missing(value):
+        return "desconhecido"
+    return "sim" if bool(value) else "não"
+
+
+def _number(value) -> float | None:
+    if isinstance(value, bool | np.bool_ | str):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if np.isfinite(number) else None
+
+
+def _validate(frame: pd.DataFrame, *, strict: bool = False) -> None:
+    """Junta todos os problemas da entrada numa única mensagem de erro."""
+    problems: list[str] = []
+    if strict:
+        accepted = {*PRE_FLIGHT_INPUTS, *HISTORICAL_FIELDS}
+        unknown = [str(col) for col in frame.columns if col not in accepted]
+        if unknown:
+            problems.append(
+                f"campos desconhecidos {unknown} (o modelo usa {', '.join(PRE_FLIGHT_INPUTS)})"
+            )
+    required = [col for col in PRE_FLIGHT_INPUTS if col not in OPTIONAL_INPUTS]
+    absent = [col for col in required if col not in frame.columns]
+    if absent:
+        problems.append(f"faltam as colunas obrigatórias {absent}")
+
+    for col in required:
+        if col not in frame.columns:
+            continue
+        values = frame[col].astype(object)
+        missing = values.map(_is_missing)
+        if missing.any():
+            problems.append(f"{col}: valor ausente em {int(missing.sum())} campanha(s)")
+        present = values[~missing]
+        if col in CATEGORY_ORDERS:
+            unknown = sorted({str(v) for v in present if v not in CATEGORY_ORDERS[col]})
+            if unknown:
+                allowed = ", ".join(CATEGORY_ORDERS[col])
+                problems.append(f"{col}: valor desconhecido {unknown} (aceitos: {allowed})")
+        elif not present.map(_is_bool).all():
+            problems.append(f"{col}: esperado verdadeiro/falso")
+
+    subtitle = _optional(frame, "has_subtitle")
+    if not subtitle[~subtitle.map(_is_missing)].map(_is_bool).all():
+        problems.append("has_subtitle: esperado verdadeiro/falso ou ausente")
+
+    for col, valid, rule in [
+        ("video_duration_s", lambda x: x > 0, "maior que zero"),
+        ("music_voice_ratio", lambda x: 0 <= x <= 1, "entre 0 e 1"),
+    ]:
+        values = _optional(frame, col)
+        numbers = values[~values.map(_is_missing)].map(_number)
+        if numbers.isna().any() or not numbers.dropna().map(valid).all():
+            problems.append(f"{col}: esperado um número {rule}, ou ausente")
+
+    if problems:
+        raise ValueError("Entrada inválida: " + "; ".join(problems) + ".")
+
+
+# --------------------------------------------------------------------------- #
+# Divisão dos dados e partições
+# --------------------------------------------------------------------------- #
+def split_development_test(
+    data: pd.DataFrame, *, test_size: float = TEST_SIZE, random_state: int = RANDOM_STATE
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Separa desenvolvimento (80%) e teste final (20%), estratificado por plataforma.
+
+    Ordena por campaign_id antes do sorteio, para a divisão não depender da ordem das
+    linhas. O teste só é consultado uma vez, depois que modelo, features e
+    hiperparâmetros estiverem decididos.
+    """
+    ordered = data.sort_values(ID_COL, kind="stable").reset_index(drop=True)
+    development, test = train_test_split(
+        ordered,
+        test_size=test_size,
+        stratify=ordered["platform"].astype(str),
+        random_state=random_state,
+    )
+    return (
+        development.sort_values(ID_COL).reset_index(drop=True),
+        test.sort_values(ID_COL).reset_index(drop=True),
+    )
+
+
+def outer_splits(
+    development: pd.DataFrame,
+    *,
+    n_splits: int = N_SPLITS,
+    n_repeats: int = N_REPEATS,
+    random_state: int = RANDOM_STATE,
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """As partições externas, as mesmas para todos os candidatos, estratificadas por plataforma.
+
+    Partições repetidas compartilham campanhas: a variação entre elas mostra
+    estabilidade, mas elas não são amostras independentes.
+    """
+    cv = RepeatedStratifiedKFold(n_splits=n_splits, n_repeats=n_repeats, random_state=random_state)
+    return list(cv.split(development, development["platform"].astype(str)))
+
+
+# --------------------------------------------------------------------------- #
+# Pipelines
+# --------------------------------------------------------------------------- #
+def build_pipeline(
+    model: str, spec: FeatureSpec = BASE_SPEC, *, scenario: str = "pre", **params
+) -> Pipeline:
+    """Pipeline completo de um candidato: preparação aprendida no treino e modelo.
+
+    - "dummy": prevê a média do treino, o piso que qualquer modelo precisa superar;
+    - "ridge": regressão linear com regularização, a candidata interpretável;
+    - "hgb": gradient boosting de histogramas, a candidata não linear.
+
+    ``scenario="post"`` monta o modelo B, com as taxas de performance.
+    """
+    if scenario not in ("pre", "post"):
+        raise ValueError(f"Cenário desconhecido: {scenario!r} (use 'pre' ou 'post').")
+    rates = POST_FLIGHT_RATES if scenario == "post" else []
+    if model == "dummy":
+        return Pipeline([("model", DummyRegressor(strategy="mean"))])
+    if model == "ridge":
+        ridge = Ridge(**{"alpha": 1.0, **params})
+        return Pipeline([("features", _linear_preprocessor(spec, rates)), ("model", ridge)])
+    if model == "hgb":
+        if spec.log_duration:
+            raise ValueError(
+                "Log da duração não muda um modelo de árvores: os cortes são os mesmos "
+                "para qualquer transformação que preserve a ordem."
+            )
+        categorical = CATEGORICAL_FEATURES + (["platform_format"] if spec.platform_format else [])
+        hgb = HistGradientBoostingRegressor(
+            categorical_features=categorical,
+            random_state=RANDOM_STATE,
+            **{**HGB_FIXED, **params},
+        )
+        features = _tree_preprocessor(spec, rates).set_output(transform="pandas")
+        return Pipeline([("features", features), ("model", hgb)])
+    raise ValueError(f"Modelo desconhecido: {model!r} (use 'dummy', 'ridge' ou 'hgb').")
+
+
+def tuned(model: str, spec: FeatureSpec = BASE_SPEC, *, scenario: str = "pre") -> GridSearchCV:
+    """Candidato com hiperparâmetros escolhidos só dentro do treino de cada partição externa.
+
+    Usado como estimador na validação cruzada externa, forma a validação aninhada: o
+    ajuste nunca vê a parte de validação da partição externa.
+    """
+    return GridSearchCV(
+        build_pipeline(model, spec, scenario=scenario),
+        PARAM_GRIDS[model],
+        cv=KFold(INNER_FOLDS, shuffle=True, random_state=RANDOM_STATE),
+        scoring="neg_mean_absolute_error",
+    )
+
+
+def _linear_preprocessor(spec: FeatureSpec, rates: list[str]) -> ColumnTransformer:
+    """Categorias em colunas 0/1 (contra a referência), binárias como vêm, números padronizados.
+
+    As categorias usam a lista fixa do config, então toda partição gera as mesmas colunas,
+    mesmo que alguma categoria falte no treino.
+    """
+    duration_steps = [SimpleImputer(strategy="median"), StandardScaler()]
+    if spec.log_duration:
+        duration_steps.insert(0, FunctionTransformer(np.log, feature_names_out="one-to-one"))
+    branches = [
+        (
+            "categorias",
+            OneHotEncoder(
+                categories=[CATEGORIES[col] for col in CATEGORICAL_FEATURES],
+                drop="first",
+                sparse_output=False,
+            ),
+            CATEGORICAL_FEATURES,
+        ),
+        ("binarias", "passthrough", BINARY_FEATURES),
+        ("duracao", make_pipeline(*duration_steps), ["video_duration_s"]),
+        (
+            "numericas",
+            make_pipeline(SimpleImputer(strategy="median"), StandardScaler()),
+            ["music_voice_ratio", *rates],
+        ),
+    ]
+    if spec.missing_indicators:
+        branches.append(("ausencia", MissingIndicator(features="all"), NUMERIC_FEATURES))
+    if spec.platform_format:
+        branches.append(
+            ("plataforma_formato", PlatformFormatInteractions(), ["platform", "format"])
+        )
+    return ColumnTransformer(branches, verbose_feature_names_out=False)
+
+
+def _tree_preprocessor(spec: FeatureSpec, rates: list[str]) -> ColumnTransformer:
+    """Categorias como códigos fixos para o suporte nativo do HGB; números como vêm.
+
+    Valores ausentes seguem para o modelo, que aprende para que lado mandá-los. Os códigos
+    vêm da lista fixa do config, então treino e inferência codificam igual.
+    """
+    branches = [
+        (
+            "categorias",
+            OrdinalEncoder(categories=[CATEGORIES[col] for col in CATEGORICAL_FEATURES]),
+            CATEGORICAL_FEATURES,
+        ),
+        ("binarias", "passthrough", BINARY_FEATURES),
+        ("numericas", "passthrough", [*NUMERIC_FEATURES, *rates]),
+    ]
+    if spec.missing_indicators:
+        branches.append(("ausencia", MissingIndicator(features="all"), NUMERIC_FEATURES))
+    if spec.platform_format:
+        branches.append(
+            (
+                "plataforma_formato",
+                make_pipeline(
+                    FunctionTransformer(
+                        _platform_format_combined, feature_names_out=_combined_name
+                    ),
+                    OrdinalEncoder(categories=[PLATFORM_FORMATS]),
+                ),
+                ["platform", "format"],
+            )
+        )
+    return ColumnTransformer(branches, verbose_feature_names_out=False)
+
+
+class PlatformFormatInteractions(TransformerMixin, BaseEstimator):
+    """Colunas 0/1 de plataforma × formato, só nas combinações com suporte no treino.
+
+    As combinações são contadas no treino de cada partição. Uma combinação com menos de
+    ``min_support`` campanhas, como TikTok horizontal, que não aparece na base, não vira
+    coluna: o modelo não finge ter aprendido algo sobre ela. As referências de
+    plataforma e de formato ficam de fora, como nos efeitos principais.
+    """
+
+    def __init__(self, min_support: int = MIN_INTERACTION_SUPPORT):
+        self.min_support = min_support
+
+    def fit(self, X: pd.DataFrame, y=None):
+        pairs = Counter(zip(X["platform"].astype(str), X["format"].astype(str), strict=True))
+        self.combinations_ = [
+            (p, f)
+            for p in CATEGORIES["platform"][1:]
+            for f in CATEGORIES["format"][1:]
+            if pairs[(p, f)] >= self.min_support
+        ]
+        return self
+
+    def transform(self, X: pd.DataFrame) -> np.ndarray:
+        check_is_fitted(self, "combinations_")
+        platform, fmt = X["platform"].astype(str).to_numpy(), X["format"].astype(str).to_numpy()
+        columns = [((platform == p) & (fmt == f)).astype(int) for p, f in self.combinations_]
+        return np.column_stack(columns) if columns else np.zeros((len(X), 0), dtype=int)
+
+    def get_feature_names_out(self, input_features=None) -> np.ndarray:
+        check_is_fitted(self, "combinations_")
+        return np.array([f"{p} × {f}" for p, f in self.combinations_], dtype=object)
+
+
+def _platform_format_combined(frame: pd.DataFrame) -> pd.DataFrame:
+    """Plataforma e formato numa só categoria, para as árvores.
+
+    Uma combinação que não aparece no treino, como TikTok horizontal, é tratada pelo
+    modelo como valor ausente na previsão: não existe efeito aprendido para ela.
+    """
+    combined = frame["platform"].astype(str) + " | " + frame["format"].astype(str)
+    return pd.DataFrame({"platform_format": combined}, index=frame.index)
+
+
+def _combined_name(_, __) -> list[str]:
+    return ["platform_format"]
+
+
+# --------------------------------------------------------------------------- #
+# Avaliação
+# --------------------------------------------------------------------------- #
+def evaluate_on_splits(
+    estimator: BaseEstimator,
+    features: pd.DataFrame,
+    target: pd.Series,
+    splits: Sequence[tuple[np.ndarray, np.ndarray]],
+) -> pd.DataFrame:
+    """Ajusta o candidato em cada partição e mede o erro na parte de validação.
+
+    Devolve uma linha por partição, com MAE (a métrica principal), RMSE, R² e Spearman.
+    Para candidatos com ajuste interno, registra também os hiperparâmetros escolhidos em
+    cada partição. Como todos os candidatos usam as mesmas partições, as comparações são
+    pareadas.
+    """
+    rows = []
+    for number, (train, valid) in enumerate(splits):
+        fitted = clone(estimator).fit(features.iloc[train], target.iloc[train])
+        predicted = fitted.predict(features.iloc[valid])
+        actual = target.iloc[valid].to_numpy()
+        rows.append(
+            {
+                "particao": number,
+                **_metrics(actual, predicted),
+                "hiperparametros": getattr(fitted, "best_params_", None),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def compare_on_splits(
+    candidate: pd.DataFrame, reference: pd.DataFrame, metric: str = "mae"
+) -> pd.Series:
+    """Compara dois candidatos avaliados nas mesmas partições, por uma métrica de erro.
+
+    Devolve a melhora média do candidato sobre a referência (positiva quando o candidato
+    erra menos), a melhora relativa, o desvio dessa diferença entre partições e a fração
+    de partições em que o candidato erra menos. As partições repetidas compartilham
+    campanhas: essa fração indica estabilidade, não significância estatística.
+    """
+    if metric not in ("mae", "rmse"):
+        raise ValueError(f"Métrica de erro desconhecida: {metric!r} (use 'mae' ou 'rmse').")
+    if not candidate["particao"].equals(reference["particao"]):
+        raise ValueError("Os candidatos precisam ser avaliados nas mesmas partições.")
+    gain = reference[metric].to_numpy() - candidate[metric].to_numpy()
+    return pd.Series(
+        {
+            "melhora": gain.mean(),
+            "melhora_relativa": gain.mean() / reference[metric].mean(),
+            "desvio": gain.std(ddof=1),
+            "vitorias": (gain > 0).mean(),
+        }
+    )
+
+
+def _spearman(actual: np.ndarray, predicted: np.ndarray) -> float:
+    """Correlação de postos; indefinida quando a previsão é constante, como no baseline."""
+    if np.ptp(predicted) == 0:
+        return np.nan
+    return float(stats.spearmanr(actual, predicted).statistic)
+
+
+def _metrics(actual: np.ndarray, predicted: np.ndarray) -> dict[str, float]:
+    """As quatro métricas do protocolo: MAE, RMSE, R² e Spearman."""
+    return {
+        "mae": mean_absolute_error(actual, predicted),
+        "rmse": root_mean_squared_error(actual, predicted),
+        "r2": r2_score(actual, predicted),
+        "spearman": _spearman(actual, predicted),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Avaliação final e diagnósticos
+# --------------------------------------------------------------------------- #
+def out_of_fold_predictions(
+    estimator: BaseEstimator,
+    features: pd.DataFrame,
+    target: pd.Series,
+    splits: Sequence[tuple[np.ndarray, np.ndarray]],
+) -> pd.Series:
+    """Previsão de cada campanha por um modelo que não a viu no treino.
+
+    As partições precisam cobrir a base exatamente uma vez, como uma repetição da validação
+    cruzada. Serve aos diagnósticos no desenvolvimento, sem tocar o teste.
+    """
+    covered = np.zeros(len(features), dtype=int)
+    for _, valid in splits:
+        covered[valid] += 1
+    if not (covered == 1).all():
+        raise ValueError("As partições precisam prever cada campanha exatamente uma vez.")
+    predictions = pd.Series(np.nan, index=features.index, dtype=float)
+    for train, valid in splits:
+        fitted = clone(estimator).fit(features.iloc[train], target.iloc[train])
+        predictions.iloc[valid] = fitted.predict(features.iloc[valid])
+    return predictions
+
+
+def bootstrap_metrics(
+    actual: Sequence[float],
+    predicted: Sequence[float],
+    *,
+    n_resamples: int = 2000,
+    random_state: int = RANDOM_STATE,
+) -> pd.DataFrame:
+    """Métricas com intervalo de 95% por bootstrap das campanhas.
+
+    Reamostra as campanhas com reposição e recalcula MAE, RMSE, R² e Spearman. O intervalo
+    mostra quanto cada métrica poderia variar com outro sorteio de campanhas parecidas.
+    """
+    actual, predicted = np.asarray(actual, dtype=float), np.asarray(predicted, dtype=float)
+    rng = np.random.default_rng(random_state)
+    resamples = pd.DataFrame(
+        [
+            _metrics(actual[sample], predicted[sample])
+            for sample in rng.integers(0, len(actual), (n_resamples, len(actual)))
+        ]
+    )
+    return pd.DataFrame(
+        {
+            "estimativa": pd.Series(_metrics(actual, predicted)),
+            "ic_inferior": resamples.quantile(0.025),
+            "ic_superior": resamples.quantile(0.975),
+        }
+    )
+
+
+def bootstrap_mae_gain(
+    actual: Sequence[float],
+    predicted: Sequence[float],
+    reference: Sequence[float],
+    *,
+    n_resamples: int = 2000,
+    random_state: int = RANDOM_STATE,
+) -> pd.Series:
+    """Quanto o MAE cai em relação a uma referência, com intervalo de 95% pareado.
+
+    As duas previsões são reamostradas com as mesmas campanhas, então o intervalo é o da
+    diferença, e não o de cada MAE separadamente.
+    """
+    actual = np.asarray(actual, dtype=float)
+    error = np.abs(actual - np.asarray(predicted, dtype=float))
+    reference_error = np.abs(actual - np.asarray(reference, dtype=float))
+    rng = np.random.default_rng(random_state)
+    samples = rng.integers(0, len(actual), (n_resamples, len(actual)))
+    gains = reference_error[samples].mean(axis=1) - error[samples].mean(axis=1)
+    return pd.Series(
+        {
+            "estimativa": reference_error.mean() - error.mean(),
+            "ic_inferior": np.quantile(gains, 0.025),
+            "ic_superior": np.quantile(gains, 0.975),
+        }
+    )
+
+
+def pairwise_concordance(
+    actual: Sequence[float],
+    predicted: Sequence[float],
+    groups: Sequence,
+    *,
+    by: str = "real",
+    bands: Sequence[float] = (0, 5, 10, 20, np.inf),
+    thresholds: Sequence[float] = (10,),
+) -> pd.DataFrame:
+    """Em que fração dos pares o modelo aponta o criativo de maior score.
+
+    Compara só pares do mesmo grupo, como criativos da mesma plataforma, que é como a
+    escolha acontece na prática. ``by`` define como os pares são separados:
+
+    - ``"real"``: pela diferença real de score, um diagnóstico retrospectivo, porque pares
+      quase empatados pouco informam uma decisão;
+    - ``"prevista"``: pela diferença prevista, a única que o produto conhece antes da
+      veiculação.
+
+    ``thresholds`` acrescenta linhas acumuladas, como "10 pontos ou mais". Empates na
+    previsão valem meio acerto; empates no score real ficam de fora. Um modelo que chuta
+    acerta metade.
+    """
+    if by not in ("real", "prevista"):
+        raise ValueError(f"Diferença desconhecida: {by!r} (use 'real' ou 'prevista').")
+    actual, predicted = np.asarray(actual, dtype=float), np.asarray(predicted, dtype=float)
+    groups = np.asarray(groups)
+    differences, hits = [], []
+    for group in np.unique(groups):
+        members = np.flatnonzero(groups == group)
+        first, second = np.triu_indices(len(members), k=1)
+        true_gap = actual[members[first]] - actual[members[second]]
+        predicted_gap = predicted[members[first]] - predicted[members[second]]
+        keep = true_gap != 0
+        gap = true_gap if by == "real" else predicted_gap
+        differences.append(np.abs(gap[keep]))
+        agree = np.sign(true_gap[keep]) == np.sign(predicted_gap[keep])
+        hits.append(np.where(predicted_gap[keep] == 0, 0.5, agree.astype(float)))
+    pairs = pd.DataFrame({"diferenca": np.concatenate(differences), "acerto": np.concatenate(hits)})
+    labels = [_band_label(low, high) for low, high in zip(bands[:-1], bands[1:], strict=True)]
+    pairs["faixa"] = pd.cut(pairs["diferenca"], bins=list(bands), labels=labels, right=False)
+    summary = pairs.groupby("faixa", observed=False)["acerto"].agg(pares="size", acerto="mean")
+    for name, subset in [
+        *[(f"{t:g} pontos ou mais", pairs[pairs["diferenca"] >= t]) for t in thresholds],
+        ("todos os pares", pairs),
+    ]:
+        summary.loc[name] = [len(subset), subset["acerto"].mean()]
+    summary["pares"] = summary["pares"].astype(int)
+    return summary
+
+
+def _band_label(low: float, high: float) -> str:
+    """Faixa de diferença de score, fechada à esquerda: [5, 10) vira '5 a 10 pontos'."""
+    if low == 0:
+        return f"menos de {high:g} pontos"
+    if np.isinf(high):
+        return f"{low:g} pontos ou mais"
+    return f"{low:g} a {high:g} pontos"
+
+
+# --------------------------------------------------------------------------- #
+# Interpretação
+# --------------------------------------------------------------------------- #
+def linear_effects(pipeline: Pipeline) -> pd.Series:
+    """Coeficientes da Ridge em pontos de score, com os números em unidades naturais.
+
+    Binárias e categorias ficam como estão: pontos com o atributo, ou contra a categoria de
+    referência. A duração passa a pontos a cada +10 segundos, e a música/voz a pontos a cada
+    +0,1. As interações são pontos a somar ao efeito do formato naquela plataforma. Taxas de
+    performance, no modelo B, ficam por desvio-padrão. São associações, não efeitos causais.
+    """
+    features, model = pipeline[0], pipeline[-1]
+    duration = features.named_transformers_["duracao"]
+    if len(duration.steps) != 2:
+        raise ValueError("A conversão para unidades naturais supõe a duração sem log.")
+    effects = pd.Series(model.coef_, index=features.get_feature_names_out())
+    effects["video_duration_s"] *= 10 / duration[-1].scale_[0]
+    effects["music_voice_ratio"] *= 0.1 / features.named_transformers_["numericas"][-1].scale_[0]
+    return effects
+
+
+def permutation_importance_by_group(
+    fitted: BaseEstimator,
+    features: pd.DataFrame,
+    target: pd.Series,
+    groups: Mapping[str, Sequence[str]],
+    *,
+    n_repeats: int = 10,
+    random_state: int = RANDOM_STATE,
+) -> pd.DataFrame:
+    """Quanto o MAE piora quando as colunas de um grupo são embaralhadas.
+
+    Embaralhar uma variável quebra a relação dela com o score e mostra quanto o modelo
+    depende dela para prever. As colunas de um mesmo grupo recebem a mesma permutação, o que
+    preserva as combinações reais entre elas, como plataforma e formato. É importância
+    preditiva, não efeito causal.
+    """
+    rng = np.random.default_rng(random_state)
+    baseline = mean_absolute_error(target, fitted.predict(features))
+    rows = []
+    for name, columns in groups.items():
+        increases = []
+        for _ in range(n_repeats):
+            order = rng.permutation(len(features))
+            shuffled = features.copy()
+            for col in columns:
+                shuffled[col] = features[col].iloc[order].set_axis(features.index)
+            increases.append(mean_absolute_error(target, fitted.predict(shuffled)) - baseline)
+        rows.append({"grupo": name, "aumento_mae": np.mean(increases), "desvio": np.std(increases)})
+    return pd.DataFrame(rows)

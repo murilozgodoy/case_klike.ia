@@ -12,6 +12,9 @@ dist/
 .ruff_cache/
 .ipynb_checkpoints/
 
+# Modelo treinado: recriado com python -m klike.train
+models/
+
 # Editores e configurações locais
 .vscode/
 .idea/
