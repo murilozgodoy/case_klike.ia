@@ -1,10 +1,13 @@
 """Testes das métricas derivadas e da estimativa de efeitos."""
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from klike.analysis import (
+    CONTEXT_WITHIN_PLATFORM,
     add_evidence,
     add_rate_metrics,
     count_best_practices,
@@ -111,6 +114,23 @@ def test_fit_negative_binomial_recovers_a_known_effect_and_overdispersion():
     hook = tidy_effects(fit, {"has_hook": HOOK}).set_index("atributo").loc[HOOK]
     assert hook["ic_inferior"] < np.exp(0.4) - 1 < hook["ic_superior"]
     assert fit.params["alpha"] == pytest.approx(0.5, abs=0.2)
+
+
+def test_fit_negative_binomial_rejects_a_false_convergence():
+    # No LinkedIn, com o formato dentro da plataforma, o otimizador declara convergência
+    # com parâmetros NaN; o resultado não pode passar como estimativa.
+    df = add_rate_metrics(load_clean())
+    linkedin = df[df["platform"] == "LinkedIn"]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        with pytest.raises(RuntimeError, match="não convergiu"):
+            fit_negative_binomial(
+                linkedin,
+                "conversions",
+                "impressions",
+                controls=CONTEXT_WITHIN_PLATFORM,
+                extra="C(format, Treatment('vertical'))",
+            )
 
 
 def test_add_evidence_separates_robust_results_from_weak_ones():
