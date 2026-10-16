@@ -488,10 +488,7 @@ def evaluate_on_splits(
         rows.append(
             {
                 "particao": number,
-                "mae": mean_absolute_error(actual, predicted),
-                "rmse": root_mean_squared_error(actual, predicted),
-                "r2": r2_score(actual, predicted),
-                "spearman": _spearman(actual, predicted),
+                **_metrics(actual, predicted),
                 "hiperparametros": getattr(fitted, "best_params_", None),
             }
         )
@@ -528,3 +525,208 @@ def _spearman(actual: np.ndarray, predicted: np.ndarray) -> float:
     if np.ptp(predicted) == 0:
         return np.nan
     return float(stats.spearmanr(actual, predicted).statistic)
+
+
+def _metrics(actual: np.ndarray, predicted: np.ndarray) -> dict[str, float]:
+    """As quatro métricas do protocolo: MAE, RMSE, R² e Spearman."""
+    return {
+        "mae": mean_absolute_error(actual, predicted),
+        "rmse": root_mean_squared_error(actual, predicted),
+        "r2": r2_score(actual, predicted),
+        "spearman": _spearman(actual, predicted),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Avaliação final e diagnósticos
+# --------------------------------------------------------------------------- #
+def out_of_fold_predictions(
+    estimator: BaseEstimator,
+    features: pd.DataFrame,
+    target: pd.Series,
+    splits: Sequence[tuple[np.ndarray, np.ndarray]],
+) -> pd.Series:
+    """Previsão de cada campanha por um modelo que não a viu no treino.
+
+    As partições precisam cobrir a base exatamente uma vez, como uma repetição da validação
+    cruzada. Serve aos diagnósticos no desenvolvimento, sem tocar o teste.
+    """
+    covered = np.zeros(len(features), dtype=int)
+    for _, valid in splits:
+        covered[valid] += 1
+    if not (covered == 1).all():
+        raise ValueError("As partições precisam prever cada campanha exatamente uma vez.")
+    predictions = pd.Series(np.nan, index=features.index, dtype=float)
+    for train, valid in splits:
+        fitted = clone(estimator).fit(features.iloc[train], target.iloc[train])
+        predictions.iloc[valid] = fitted.predict(features.iloc[valid])
+    return predictions
+
+
+def bootstrap_metrics(
+    actual: Sequence[float],
+    predicted: Sequence[float],
+    *,
+    n_resamples: int = 2000,
+    random_state: int = RANDOM_STATE,
+) -> pd.DataFrame:
+    """Métricas com intervalo de 95% por bootstrap das campanhas.
+
+    Reamostra as campanhas com reposição e recalcula MAE, RMSE, R² e Spearman. O intervalo
+    mostra quanto cada métrica poderia variar com outro sorteio de campanhas parecidas.
+    """
+    actual, predicted = np.asarray(actual, dtype=float), np.asarray(predicted, dtype=float)
+    rng = np.random.default_rng(random_state)
+    resamples = pd.DataFrame(
+        [
+            _metrics(actual[sample], predicted[sample])
+            for sample in rng.integers(0, len(actual), (n_resamples, len(actual)))
+        ]
+    )
+    return pd.DataFrame(
+        {
+            "estimativa": pd.Series(_metrics(actual, predicted)),
+            "ic_inferior": resamples.quantile(0.025),
+            "ic_superior": resamples.quantile(0.975),
+        }
+    )
+
+
+def bootstrap_mae_gain(
+    actual: Sequence[float],
+    predicted: Sequence[float],
+    reference: Sequence[float],
+    *,
+    n_resamples: int = 2000,
+    random_state: int = RANDOM_STATE,
+) -> pd.Series:
+    """Quanto o MAE cai em relação a uma referência, com intervalo de 95% pareado.
+
+    As duas previsões são reamostradas com as mesmas campanhas, então o intervalo é o da
+    diferença, e não o de cada MAE separadamente.
+    """
+    actual = np.asarray(actual, dtype=float)
+    error = np.abs(actual - np.asarray(predicted, dtype=float))
+    reference_error = np.abs(actual - np.asarray(reference, dtype=float))
+    rng = np.random.default_rng(random_state)
+    samples = rng.integers(0, len(actual), (n_resamples, len(actual)))
+    gains = reference_error[samples].mean(axis=1) - error[samples].mean(axis=1)
+    return pd.Series(
+        {
+            "estimativa": reference_error.mean() - error.mean(),
+            "ic_inferior": np.quantile(gains, 0.025),
+            "ic_superior": np.quantile(gains, 0.975),
+        }
+    )
+
+
+def pairwise_concordance(
+    actual: Sequence[float],
+    predicted: Sequence[float],
+    groups: Sequence,
+    *,
+    by: str = "real",
+    bands: Sequence[float] = (0, 5, 10, 20, np.inf),
+    thresholds: Sequence[float] = (10,),
+) -> pd.DataFrame:
+    """Em que fração dos pares o modelo aponta o criativo de maior score.
+
+    Compara só pares do mesmo grupo, como criativos da mesma plataforma, que é como a
+    escolha acontece na prática. ``by`` define como os pares são separados:
+
+    - ``"real"``: pela diferença real de score, um diagnóstico retrospectivo, porque pares
+      quase empatados pouco informam uma decisão;
+    - ``"prevista"``: pela diferença prevista, a única que o produto conhece antes da
+      veiculação.
+
+    ``thresholds`` acrescenta linhas acumuladas, como "10 pontos ou mais". Empates na
+    previsão valem meio acerto; empates no score real ficam de fora. Um modelo que chuta
+    acerta metade.
+    """
+    if by not in ("real", "prevista"):
+        raise ValueError(f"Diferença desconhecida: {by!r} (use 'real' ou 'prevista').")
+    actual, predicted = np.asarray(actual, dtype=float), np.asarray(predicted, dtype=float)
+    groups = np.asarray(groups)
+    differences, hits = [], []
+    for group in np.unique(groups):
+        members = np.flatnonzero(groups == group)
+        first, second = np.triu_indices(len(members), k=1)
+        true_gap = actual[members[first]] - actual[members[second]]
+        predicted_gap = predicted[members[first]] - predicted[members[second]]
+        keep = true_gap != 0
+        gap = true_gap if by == "real" else predicted_gap
+        differences.append(np.abs(gap[keep]))
+        agree = np.sign(true_gap[keep]) == np.sign(predicted_gap[keep])
+        hits.append(np.where(predicted_gap[keep] == 0, 0.5, agree.astype(float)))
+    pairs = pd.DataFrame({"diferenca": np.concatenate(differences), "acerto": np.concatenate(hits)})
+    labels = [_band_label(low, high) for low, high in zip(bands[:-1], bands[1:], strict=True)]
+    pairs["faixa"] = pd.cut(pairs["diferenca"], bins=list(bands), labels=labels, right=False)
+    summary = pairs.groupby("faixa", observed=False)["acerto"].agg(pares="size", acerto="mean")
+    for name, subset in [
+        *[(f"{t:g} pontos ou mais", pairs[pairs["diferenca"] >= t]) for t in thresholds],
+        ("todos os pares", pairs),
+    ]:
+        summary.loc[name] = [len(subset), subset["acerto"].mean()]
+    summary["pares"] = summary["pares"].astype(int)
+    return summary
+
+
+def _band_label(low: float, high: float) -> str:
+    """Faixa de diferença de score, fechada à esquerda: [5, 10) vira '5 a 10 pontos'."""
+    if low == 0:
+        return f"menos de {high:g} pontos"
+    if np.isinf(high):
+        return f"{low:g} pontos ou mais"
+    return f"{low:g} a {high:g} pontos"
+
+
+# --------------------------------------------------------------------------- #
+# Interpretação
+# --------------------------------------------------------------------------- #
+def linear_effects(pipeline: Pipeline) -> pd.Series:
+    """Coeficientes da Ridge em pontos de score, com os números em unidades naturais.
+
+    Binárias e categorias ficam como estão: pontos com o atributo, ou contra a categoria de
+    referência. A duração passa a pontos a cada +10 segundos, e a música/voz a pontos a cada
+    +0,1. As interações são pontos a somar ao efeito do formato naquela plataforma. Taxas de
+    performance, no modelo B, ficam por desvio-padrão. São associações, não efeitos causais.
+    """
+    features, model = pipeline[0], pipeline[-1]
+    duration = features.named_transformers_["duracao"]
+    if len(duration.steps) != 2:
+        raise ValueError("A conversão para unidades naturais supõe a duração sem log.")
+    effects = pd.Series(model.coef_, index=features.get_feature_names_out())
+    effects["video_duration_s"] *= 10 / duration[-1].scale_[0]
+    effects["music_voice_ratio"] *= 0.1 / features.named_transformers_["numericas"][-1].scale_[0]
+    return effects
+
+
+def permutation_importance_by_group(
+    fitted: BaseEstimator,
+    features: pd.DataFrame,
+    target: pd.Series,
+    groups: Mapping[str, Sequence[str]],
+    *,
+    n_repeats: int = 10,
+    random_state: int = RANDOM_STATE,
+) -> pd.DataFrame:
+    """Quanto o MAE piora quando as colunas de um grupo são embaralhadas.
+
+    Embaralhar uma variável quebra a relação dela com o score e mostra quanto o modelo
+    depende dela para prever. As colunas de um mesmo grupo recebem a mesma permutação, o que
+    preserva as combinações reais entre elas, como plataforma e formato. É importância
+    preditiva, não efeito causal.
+    """
+    rng = np.random.default_rng(random_state)
+    baseline = mean_absolute_error(target, fitted.predict(features))
+    rows = []
+    for name, columns in groups.items():
+        increases = []
+        for _ in range(n_repeats):
+            order = rng.permutation(len(features))
+            shuffled = features.copy()
+            for col in columns:
+                shuffled[col] = features[col].iloc[order].set_axis(features.index)
+            increases.append(mean_absolute_error(target, fitted.predict(shuffled)) - baseline)
+        rows.append({"grupo": name, "aumento_mae": np.mean(increases), "desvio": np.std(increases)})
+    return pd.DataFrame(rows)

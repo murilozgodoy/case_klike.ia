@@ -9,6 +9,7 @@ experimentos formais.
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.metrics import mean_absolute_error
 from sklearn.model_selection import KFold, ParameterGrid
 from sklearn.preprocessing import FunctionTransformer
 
@@ -32,10 +33,16 @@ from klike.modeling import (
     SELECTED_SPEC,
     FeatureSpec,
     PlatformFormatInteractions,
+    bootstrap_mae_gain,
+    bootstrap_metrics,
     build_pipeline,
     compare_on_splits,
     evaluate_on_splits,
+    linear_effects,
+    out_of_fold_predictions,
     outer_splits,
+    pairwise_concordance,
+    permutation_importance_by_group,
     prepare_features,
     prepare_post_flight_features,
     split_development_test,
@@ -405,3 +412,105 @@ def test_hyperparameters_are_tuned_within_a_small_declared_grid():
     features, score = _synthetic()
     search = tuned("ridge").fit(features, score)
     assert search.best_params_["model__alpha"] in PARAM_GRIDS["ridge"]["model__alpha"]
+
+
+# --------------------------------------------------------------------------- #
+# Avaliação final, diagnósticos e interpretação
+# --------------------------------------------------------------------------- #
+def test_out_of_fold_predictions_cover_each_campaign_once():
+    features, score = _synthetic()
+    splits = list(KFold(5, shuffle=True, random_state=0).split(features))
+    predictions = out_of_fold_predictions(build_pipeline("ridge"), features, score, splits)
+    assert predictions.notna().all()
+    assert mean_absolute_error(score, predictions) < 4  # o hook é aprendido fora da amostra
+    with pytest.raises(ValueError, match="exatamente uma vez"):
+        out_of_fold_predictions(build_pipeline("ridge"), features, score, splits[:3])
+
+
+def test_bootstrap_interval_brackets_the_estimate_and_is_reproducible():
+    rng = np.random.default_rng(0)
+    actual = rng.normal(60, 15, 100)
+    predicted = actual + rng.normal(0, 5, 100)
+    first = bootstrap_metrics(actual, predicted, n_resamples=500)
+    pd.testing.assert_frame_equal(first, bootstrap_metrics(actual, predicted, n_resamples=500))
+    assert list(first.index) == ["mae", "rmse", "r2", "spearman"]
+    assert (first["ic_inferior"] <= first["estimativa"]).all()
+    assert (first["estimativa"] <= first["ic_superior"]).all()
+
+
+def test_bootstrap_mae_gain_compares_the_same_campaigns():
+    rng = np.random.default_rng(1)
+    actual = rng.normal(60, 15, 100)
+    good, constant = actual + rng.normal(0, 3, 100), np.full(100, 60.0)
+    gain = bootstrap_mae_gain(actual, good, constant, n_resamples=500)
+    assert gain["ic_inferior"] > 0  # o modelo bom erra menos, com folga
+    assert gain["ic_inferior"] <= gain["estimativa"] <= gain["ic_superior"]
+
+
+def test_pairwise_concordance_compares_only_within_groups_and_by_band():
+    actual = [10, 20, 40, 10, 30]
+    groups = ["A", "A", "A", "B", "B"]
+    perfect = pairwise_concordance(actual, actual, groups)
+    assert perfect.loc["todos os pares", "pares"] == 4  # 3 pares em A e 1 em B, nenhum entre eles
+    assert perfect.loc["todos os pares", "acerto"] == 1
+    assert perfect.loc["10 pontos ou mais", "pares"] == 4  # diferenças de 10, 30, 20 e 20
+    assert perfect.loc["10 a 20 pontos", "pares"] == 1
+    assert perfect.loc["20 pontos ou mais", "pares"] == 3
+    reversed_order = pairwise_concordance(actual, [-value for value in actual], groups)
+    assert reversed_order.loc["todos os pares", "acerto"] == 0
+
+
+def test_pairwise_concordance_counts_prediction_ties_as_half():
+    result = pairwise_concordance([10, 30], [50, 50], ["A", "A"])
+    assert result.loc["todos os pares", "acerto"] == 0.5
+
+
+def test_pairwise_concordance_can_split_pairs_by_the_predicted_difference():
+    actual, predicted, groups = [10, 20, 40], [10, 12, 50], ["A", "A", "A"]
+    # Diferenças reais de 10, 30 e 20; previstas de 2, 40 e 38. O modelo acerta os três pares.
+    by_real = pairwise_concordance(actual, predicted, groups)
+    by_prediction = pairwise_concordance(
+        actual, predicted, groups, by="prevista", thresholds=(5, 10)
+    )
+    assert by_real.loc["10 a 20 pontos", "pares"] == 1
+    assert by_prediction.loc["menos de 5 pontos", "pares"] == 1
+    assert by_prediction.loc["20 pontos ou mais", "pares"] == 2
+    assert by_prediction.loc["5 pontos ou mais", "pares"] == 2
+    assert by_prediction.loc["todos os pares", "acerto"] == 1
+    assert by_real.loc["todos os pares", "acerto"] == 1
+    with pytest.raises(ValueError, match="Diferença desconhecida"):
+        pairwise_concordance(actual, predicted, groups, by="absoluta")
+
+
+def test_linear_effects_are_in_points_and_natural_units():
+    features, _ = _synthetic(n=600, seed=5)
+    noise = np.random.default_rng(5).normal(0, 1, len(features))
+    score = (
+        50
+        + 12 * features["has_hook"]
+        + 0.2 * features["video_duration_s"]
+        - 5 * features["music_voice_ratio"]
+        + noise
+    )
+    effects = linear_effects(build_pipeline("ridge", alpha=0.01).fit(features, score))
+    assert effects["has_hook"] == pytest.approx(12, abs=0.5)
+    assert effects["video_duration_s"] == pytest.approx(2, abs=0.3)  # +0,2 por segundo
+    assert effects["music_voice_ratio"] == pytest.approx(-0.5, abs=0.1)  # −5 por unidade inteira
+    logged = build_pipeline("ridge", FeatureSpec(log_duration=True)).fit(features, score)
+    with pytest.raises(ValueError, match="sem log"):
+        linear_effects(logged)
+
+
+def test_permutation_importance_by_group_finds_what_the_model_uses():
+    features, score = _synthetic(n=400)
+    fitted = build_pipeline("ridge").fit(features, score)
+    groups = {
+        "hook": ["has_hook"],
+        "rosto": ["has_face"],
+        "plataforma e formato": ["platform", "format"],
+    }
+    importance = permutation_importance_by_group(fitted, features, score, groups, n_repeats=5)
+    importance = importance.set_index("grupo")["aumento_mae"]
+    assert importance["hook"] > 3  # embaralhar o hook custa caro
+    assert abs(importance["rosto"]) < 0.5  # o rosto não pesa nos dados sintéticos
+    assert abs(importance["plataforma e formato"]) < 0.5
