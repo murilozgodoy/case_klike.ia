@@ -11,6 +11,7 @@ evidências nem previsões.
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections import Counter
@@ -23,11 +24,19 @@ from klike.config import CONTEXT_COLS, REPORTS_DIR
 from klike.engine import (
     ACTIONS,
     BORDERLINE_SCORE,
+    CAVEATS,
+    EXECUTIVE_SIZE,
+    MUSIC_MAX_TARGET,
+    MUSIC_STEP,
+    NO_CAVEAT,
+    OBJECTIVE_METRICS,
+    SUPPORT_CAVEATS,
     Association,
     Recommendation,
     RecommendationEngine,
     RecommendationReport,
 )
+from klike.evidence import PERFORMANCE_METRICS
 from klike.modeling import PRE_FLIGHT_INPUTS
 
 EVALUATION_PATH = REPORTS_DIR / "engine_recommendations.csv"
@@ -59,6 +68,8 @@ def recommendation_table(reports: Sequence[RecommendationReport]) -> pd.DataFram
                     "formato": campaign["format"],
                     "prioridade": r.priority,
                     "acao": r.action,
+                    "de": r.current_label,
+                    "para": r.suggested_label,
                     "classe": r.recommendation_class,
                     "metrica": r.metric,
                     "efeito": a.effect if a else math.nan,
@@ -83,6 +94,7 @@ def recommendation_table(reports: Sequence[RecommendationReport]) -> pd.DataFram
                         other.metric_name for other in r.other_associations if other.effect > 0
                     ),
                     "avisos": len(r.warnings),
+                    "ressalvas": " · ".join(r.caveats),
                 }
             )
     return pd.DataFrame(rows)
@@ -140,9 +152,10 @@ def coverage(campaigns: pd.DataFrame, by: str | None = None) -> pd.DataFrame:
 def action_funnel(reports: Sequence[RecommendationReport]) -> pd.DataFrame:
     """Para cada edição do catálogo, quantas campanhas poderiam recebê-la e quantas recebem.
 
-    Na plataforma da edição, a campanha tem o valor ausente, outro valor (como quem já tem
-    hook) ou exatamente o valor de partida. Só as do último grupo são avaliadas: viram
-    recomendação de alguma classe ou são rejeitadas, com o motivo registrado no relatório.
+    Na plataforma e nas métricas da edição, a campanha tem o valor ausente, outro valor (como
+    quem já tem hook, ou música/voz acima de 0,57) ou o valor de partida. Só as do último grupo
+    são avaliadas: viram recomendação de alguma classe ou são rejeitadas, com o motivo
+    registrado no relatório.
     """
     rows = []
     for action in ACTIONS:
@@ -150,6 +163,8 @@ def action_funnel(reports: Sequence[RecommendationReport]) -> pd.DataFrame:
         for report in reports:
             campaign = report.campaign
             if action.platform and campaign["platform"] != action.platform:
+                continue
+            if not action.evaluated_for(report.metric):
                 continue
             counts["campanhas"] += 1
             if campaign[action.field] is None:
@@ -167,9 +182,19 @@ def action_funnel(reports: Sequence[RecommendationReport]) -> pd.DataFrame:
                     "rejeitada",
                 )
                 counts[klass] += 1
-        rows.append({"acao": action.key, "plataforma": action.platform or "todas", **counts})
+        metrics = (
+            ", ".join(PERFORMANCE_METRICS[m] for m in action.metrics) if action.metrics else "todas"
+        )
+        rows.append(
+            {
+                "acao": action.key,
+                "plataforma": action.platform or "todas",
+                "metricas": metrics,
+                **counts,
+            }
+        )
     columns = ["campanhas", "valor_ausente", "outro_valor", "avaliadas", *CLASS_ORDER, "rejeitada"]
-    funnel = pd.DataFrame(rows).reindex(columns=["acao", "plataforma", *columns])
+    funnel = pd.DataFrame(rows).reindex(columns=["acao", "plataforma", "metricas", *columns])
     return funnel.fillna(0).astype(dict.fromkeys(columns, int)).set_index("acao")
 
 
@@ -358,14 +383,17 @@ _HEADER = re.compile(r"^(\d+)\. (.+)  \[classe ([ABC]): ")
 _IMPACT = "   Impacto estimado: "
 
 
-def audit(engine: RecommendationEngine, campaigns: pd.DataFrame) -> pd.DataFrame:
+def audit(
+    engine: RecommendationEngine, campaigns: pd.DataFrame, *, metric: str | None = None
+) -> pd.DataFrame:
     """Roda o engine nas campanhas e confere a coerência das saídas, de ponta a ponta.
 
     Uma linha por verificação, com os itens examinados e as falhas. Além das regras de cada
     relatório, roda tudo de novo em ordem inversa (determinismo) e só com os campos de
-    pré-publicação (as métricas observadas não entram no cálculo).
+    pré-publicação (as métricas observadas não entram no cálculo). ``metric`` troca a métrica
+    de todas as campanhas, como na chamada do engine.
     """
-    reports = engine.recommend_all(campaigns)
+    reports = engine.recommend_all(campaigns, metric=metric)
     results: dict[str, list[int]] = {}
 
     def check(name: str, ok: bool) -> None:
@@ -376,6 +404,13 @@ def audit(engine: RecommendationEngine, campaigns: pd.DataFrame) -> pd.DataFrame
         recs = report.recommendations
         check("JSON, tabela e texto mostram as mesmas recomendações", _formats_agree(report))
         check("resumo coerente com a lista", _summary_agrees(report))
+        check("resumo executivo igual às primeiras recomendações", _executive_agrees(report))
+        check("métrica escolhida manualmente declarada", _metric_declared(report))
+        evaluated = [r.action for r in recs] + [key for key, _ in report.not_recommended]
+        check(
+            "música avaliada só na retenção",
+            report.metric == "completion_rate" or "musica" not in evaluated,
+        )
         check("prioridades de 1 a n", [r.priority for r in recs] == list(range(1, len(recs) + 1)))
         check("no máximo uma edição por campo", len({r.field for r in recs}) == len(recs))
         check(
@@ -404,13 +439,19 @@ def audit(engine: RecommendationEngine, campaigns: pd.DataFrame) -> pd.DataFrame
                 min(r.support.n_current, r.support.n_target) >= engine.min_support,
             )
             check("avisos coerentes com os campos", _warnings_agree(report, r, engine.min_support))
-    again = engine.recommend_all(campaigns.iloc[::-1])
+            check(
+                "ressalvas curtas iguais aos avisos", _caveats_agree(report, r, engine.min_support)
+            )
+            if r.action == "musica":
+                check("música só na retenção, +0,1 e até 0,67", _music_agrees(r))
+    again = engine.recommend_all(campaigns.iloc[::-1], metric=metric)
     for report, repeated in zip(reports, reversed(again), strict=True):
         check(
             "mesma saída ao rodar de novo, em outra ordem", report.to_dict() == repeated.to_dict()
         )
     pre_flight = campaigns[[col for col in PRE_FLIGHT_INPUTS if col in campaigns]]
-    for report, blind in zip(reports, engine.recommend_all(pre_flight), strict=True):
+    blind_reports = engine.recommend_all(pre_flight, metric=metric)
+    for report, blind in zip(reports, blind_reports, strict=True):
         check(
             "mesma saída sem as métricas observadas",
             _without_history(report) == _without_history(blind),
@@ -442,6 +483,10 @@ def _formats_agree(report: RecommendationReport) -> bool:
             )
         )
     )
+    caveats = [" · ".join(r.caveats) for r in recs]
+    same_caveats = [" · ".join(d["ressalvas"]) for d in payload["recomendacoes"]] == caveats and (
+        frame.empty or list(frame["ressalvas"]) == caveats
+    )
     lines = report.to_text().splitlines()
     headers = [m for m in map(_HEADER.match, lines) if m]
     impacts = [line.removeprefix(_IMPACT) for line in lines if line.startswith(_IMPACT)]
@@ -453,6 +498,7 @@ def _formats_agree(report: RecommendationReport) -> bool:
     warnings = sum(len(r.warnings) for r in recs)
     return (
         expected == from_json == from_frame == from_text
+        and same_caveats
         and (frame.empty or frame["avisos"].sum() == warnings)
         and sum(line.startswith("   Aviso: ") for line in lines) == warnings
         and [(d["acao"], d["motivo"]) for d in payload["nao_recomendadas"]]
@@ -496,22 +542,116 @@ def _tables_agree(engine: RecommendationEngine, r: Recommendation) -> bool:
     return association and r.model_change == tuple(model)
 
 
-def _warnings_agree(report: RecommendationReport, r: Recommendation, minimum: int) -> bool:
-    """Cada aviso aparece exatamente quando o campo correspondente pede."""
+# Início de cada aviso e o rótulo curto que ele recebe no resumo executivo. O de pouca base
+# depende do risco do suporte (``SUPPORT_CAVEATS``).
+_WARNING_CAVEATS = {
+    "Extrapolação": "extrapolação",
+    "Sem associação mensurável": "sem associação mensurável",
+    "A associação com": "estimativa desfavorável e inconclusiva",
+    "A classe depende da análise": "classe sensível à análise",
+    "Associada a": "desfavorável em outra métrica",
+    "Ganho de score limítrofe": "ganho de score limítrofe",
+    "O score previsto cai": "score previsto cai",
+    "A previsão encosta no limite": "score no limite da escala",
+    "Sem evidência suficiente de ganho": "sem evidência na métrica",
+}
+
+
+def _expected_warnings(
+    report: RecommendationReport, r: Recommendation, minimum: int
+) -> dict[str, bool]:
+    """Quais avisos a recomendação deve ter, pelos campos estruturados, não pelo texto."""
     a, change = r.association, r.score_change
-    expected = {
+    return {
         "Extrapolação": report.combination_support < minimum,
         "Sem associação mensurável": a is None,
         "A associação com": _unfavorable(a),
         "A classe depende da análise": a is not None and a.sensitivity is not None,
+        "Associada a": any(other.effect < 0 for other in r.other_associations),
         "Ganho de score limítrofe": 0 < r.model_change[1] < BORDERLINE_SCORE,
         "Pouca base no contexto": r.support.risk != "baixo",
-        "A previsão encosta no limite": change >= 0 and abs(change - r.model_change[0]) > 0.05,
+        "O score previsto cai": change < 0,
+        "A previsão encosta no limite": abs(change - r.model_change[0]) > 0.05,
         "Sem evidência suficiente de ganho": r.recommendation_class == "C",
     }
+
+
+def _warnings_agree(report: RecommendationReport, r: Recommendation, minimum: int) -> bool:
+    """Cada aviso aparece exatamente quando o campo correspondente pede."""
+    expected = _expected_warnings(report, r, minimum)
     present = {prefix: any(w.startswith(prefix) for w in r.warnings) for prefix in expected}
     scenario_first = not expected["Extrapolação"] or r.warnings[0].startswith("Extrapolação")
     return scenario_first and present == expected
+
+
+def _caveats_agree(report: RecommendationReport, r: Recommendation, minimum: int) -> bool:
+    """As ressalvas curtas são os rótulos dos avisos esperados, na ordem de precedência."""
+    expected = _expected_warnings(report, r, minimum)
+    labels = {
+        SUPPORT_CAVEATS[r.support.risk]
+        if prefix == "Pouca base no contexto"
+        else _WARNING_CAVEATS[prefix]
+        for prefix, present in expected.items()
+        if present
+    }
+    return r.caveats == (tuple(label for label in CAVEATS if label in labels) or (NO_CAVEAT,))
+
+
+def _executive_agrees(report: RecommendationReport) -> bool:
+    """O resumo executivo mostra as primeiras recomendações, iguais no texto e no JSON."""
+    recs, payload = report.recommendations, report.to_dict()
+    top = recs[:EXECUTIVE_SIZE]
+    fields = ["prioridade", "titulo", "classe", "impacto_estimado", "ressalvas"]
+    same_json = len(payload["principais"]) == len(top) and all(
+        [entry[f] for f in fields] == [detail[f] for f in fields]
+        for entry, detail in zip(payload["principais"], payload["recomendacoes"], strict=False)
+    )
+    counts = Counter(r.recommendation_class for r in recs)
+    composition = payload["composicao"]
+    same_counts = (
+        composition["recomendacoes"] == len(recs)
+        and composition["com_evidencia_na_metrica"] == counts["A"] + counts["B"]
+        and composition["hipoteses_de_score"] == counts["C"]
+    )
+    lines = report.to_text().splitlines()
+    starts = [i for i, line in enumerate(lines) if line.startswith("Principais recomendações")]
+    block = [
+        line
+        for r in top
+        for line in (
+            f"   {r.priority}. {r.title} · classe {r.recommendation_class}",
+            f"      {r.headline}",
+            f"      Ressalvas: {' · '.join(r.caveats)}",
+        )
+    ]
+    if not top:
+        same_text = not starts
+    else:
+        same_text = len(starts) == 1 and lines[starts[0] + 1 : starts[0] + 1 + len(block)] == block
+    return same_json and same_counts and same_text
+
+
+def _metric_declared(report: RecommendationReport) -> bool:
+    """Com a métrica trocada, a saída diz isso e nunca chama a métrica de "do objetivo"."""
+    manual = report.metric != OBJECTIVE_METRICS[report.objective]
+    payload = report.to_dict()
+    text = report.to_text() + json.dumps(payload, ensure_ascii=False)
+    wrong_name = "métrica do objetivo" if manual else "métrica selecionada"
+    return (
+        payload["metrica_selecionada_manualmente"] == manual
+        and payload["metrica_principal_do_objetivo"] == OBJECTIVE_METRICS[report.objective]
+        and ("selecionada manualmente" in text) == manual
+        and wrong_name not in text
+    )
+
+
+def _music_agrees(r: Recommendation) -> bool:
+    """A música só aparece na retenção, soma 0,1 ao valor exato e não passa de 0,67."""
+    return (
+        r.metric == "completion_rate"
+        and math.isclose(r.suggested_value - r.current_value, MUSIC_STEP, abs_tol=1e-9)
+        and r.suggested_value <= MUSIC_MAX_TARGET + 1e-9
+    )
 
 
 def _unfavorable(a: Association | None) -> bool:

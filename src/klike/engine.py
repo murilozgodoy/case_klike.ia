@@ -6,18 +6,21 @@ prioridade. Para cada edição, quatro informações ficam separadas:
 
 - diferença prevista de score: o preditor da Parte 2 calcula o score da campanha antes e depois
   da edição, dentro da escala de 0 a 100; o intervalo do modelo vem de ``score_differences.csv``;
-- associação com performance: o contraste da edição na métrica do objetivo da campanha, lido de
-  ``recommendation_evidence.csv``, sem recalcular nada;
+- associação com performance: o contraste da edição na métrica do objetivo da campanha, ou na
+  métrica escolhida, lido de ``recommendation_evidence.csv``, sem recalcular nada;
 - classe de evidência: A, B ou C, pela regra registrada no notebook 04;
-- suporte histórico: quantas campanhas parecidas têm o valor atual e o sugerido.
+- suporte histórico: quantas campanhas comparáveis têm o valor atual e o sugerido.
+
+O relatório abre com um resumo executivo: as três primeiras recomendações, com as ressalvas de
+cada uma em rótulos curtos. Os avisos completos continuam na parte detalhada.
 
 Nada disso é efeito causal: cada recomendação é uma hipótese para validar com teste A/B.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 
 import pandas as pd
@@ -27,6 +30,7 @@ from klike.evidence import PERFORMANCE_METRICS, load_performance_evidence, load_
 from klike.formatting import fmt_number, fmt_signed, fmt_signed_pct
 from klike.modeling import PRE_FLIGHT_INPUTS, prepare_features
 from klike.predictor import KlikeScorePredictor, train_final_model
+from klike.support import MUSIC_HUNDREDTHS, HistoricalSupport, to_hundredths
 
 # Métrica principal de cada objetivo. É uma premissa de produto: pode ser trocada por parâmetro.
 OBJECTIVE_METRICS = {
@@ -42,6 +46,13 @@ MIN_SUPPORT = 10
 # Abaixo deste limite inferior, em pontos, o ganho de score do modelo é tratado como limítrofe.
 BORDERLINE_SCORE = 1.0
 SIGNIFICANCE = 0.05
+# Música/voz: a edição soma 0,1 à proporção, o contraste exato da família de evidências. O valor
+# sugerido não passa de 0,67, o percentil 90 da base: um limite contra extrapolação, não uma
+# proporção ideal.
+MUSIC_STEP = 0.1
+MUSIC_MAX_TARGET = 0.67
+# Quantas recomendações o resumo executivo mostra, no início do relatório.
+EXECUTIVE_SIZE = 3
 
 CLASS_LABELS = {
     "A": "melhoria com evidência de performance",
@@ -71,6 +82,39 @@ SUPPORT_LEVELS = [
 ]
 # No suporte histórico, a legenda aparece como sim, não ou desconhecido.
 SUBTITLE_SUPPORT = {False: "não", True: "sim"}
+# Rótulos curtos dos avisos, na ordem em que o resumo executivo os mostra. Cada aviso completo
+# tem exatamente um rótulo, gerado junto com ele; sem nenhum aviso, vale a ressalva geral.
+CAVEATS = (
+    "extrapolação",
+    "score previsto cai",
+    "score no limite da escala",
+    "sem evidência na métrica",
+    "sem associação mensurável",
+    "classe sensível à análise",
+    "estimativa desfavorável e inconclusiva",
+    "desfavorável em outra métrica",
+    "ganho de score limítrofe",
+    "pouca base no contexto (só na plataforma)",
+    "pouca base no contexto (só na base inteira)",
+)
+NO_CAVEAT = "associação, não causa (validar em A/B)"
+# O rótulo de pouca base diz o recorte mais amplo que foi preciso usar, pelo risco do suporte.
+SUPPORT_CAVEATS = {
+    "moderado": "pouca base no contexto (só na plataforma)",
+    "alto": "pouca base no contexto (só na base inteira)",
+}
+
+
+def class_label(klass: str, manual_metric: bool = False) -> str:
+    """Descrição da classe. Com a métrica trocada manualmente, a C fala da métrica selecionada."""
+    if klass == "C":
+        return f"oportunidade de score, sem evidência suficiente na {_metric_ref(manual_metric)}"
+    return CLASS_LABELS[klass]
+
+
+def _metric_ref(manual_metric: bool) -> str:
+    """Como os textos chamam a métrica avaliada: a do objetivo ou a escolhida na chamada."""
+    return "métrica selecionada" if manual_metric else "métrica do objetivo"
 
 
 @dataclass(frozen=True)
@@ -78,7 +122,8 @@ class Action:
     """Uma edição do catálogo: o campo, o valor atual e o sugerido, e como descrevê-la.
 
     Os rótulos completam a frase "N campanhas ..." (``sem hook``, ``com texto alto``); a
-    ``phrase`` descreve a edição numa justificativa.
+    ``phrase`` descreve a edição numa justificativa. ``metrics`` limita as métricas em que a
+    edição é avaliada; sem ele, vale para todas.
     """
 
     key: str  # transição nas tabelas de evidência
@@ -91,6 +136,14 @@ class Action:
     phrase: str
     platform: str | None = None
     alternative: str | None = None  # outra transição, citada na justificativa
+    metrics: tuple[str, ...] | None = None
+
+    def evaluated_for(self, metric: str) -> bool:
+        return self.metrics is None or metric in self.metrics
+
+    def for_campaign(self, campaign: Mapping) -> Action:
+        """A edição com os valores desta campanha. Numa edição categórica, ela mesma."""
+        return self
 
     def applies_to(self, campaign: Mapping) -> bool:
         """A campanha tem exatamente o valor atual, na plataforma da edição, se houver uma.
@@ -112,6 +165,131 @@ class Action:
         if self.field == "has_subtitle":
             return "subtitle_status", SUBTITLE_SUPPORT[self.current], SUBTITLE_SUPPORT[self.target]
         return self.field, self.current, self.target
+
+    def support_counts(self, support: HistoricalSupport, context: Mapping) -> tuple[int, int]:
+        """Campanhas do recorte com o valor atual e com o sugerido."""
+        column, current, target = self.support_condition
+        return (
+            support.count(**context, **{column: current}),
+            support.count(**context, **{column: target}),
+        )
+
+    @property
+    def support_labels(self) -> tuple[str, str]:
+        """Como o suporte descreve os dois grupos de campanhas comparados."""
+        return self.current_label, self.target_label
+
+    @property
+    def support_note(self) -> str | None:
+        """Como o suporte aproxima os dois lados, quando não conta valores exatos."""
+        return None
+
+    def rationale_note(self, association: Association | None) -> str | None:
+        """Ressalva própria da edição, acrescentada à justificativa."""
+        return None
+
+    def next_step_note(self) -> str | None:
+        """Cuidado próprio da edição no teste A/B."""
+        return None
+
+
+@dataclass(frozen=True)
+class MusicIncrease(Action):
+    """Somar ``step`` à proporção música/voz, sem passar de ``maximum``.
+
+    É a única edição contínua: o valor atual e o sugerido vêm de cada campanha. O valor exato
+    decide se a edição se aplica e entra na previsão. Os centésimos inteiros servem só para
+    centrar as janelas do suporte histórico, uma aproximação dos dois lados da comparação: o
+    valor atual e o sugerido raramente aparecem exatos na base.
+    """
+
+    step: float = MUSIC_STEP
+    maximum: float = MUSIC_MAX_TARGET
+
+    def applies_to(self, campaign: Mapping) -> bool:
+        """Música/voz informada e, no valor exato, até ``maximum - step``.
+
+        As seis casas tiram só o resíduo binário: 0,570 se aplica; 0,571 e 0,574 não.
+        """
+        value = campaign[self.field]
+        limit = round((self.maximum - self.step) * 100, 6)
+        return value is not None and round(value * 100, 6) <= limit
+
+    def apply(self, campaign: Mapping) -> dict:
+        return {**campaign, self.field: _plus(campaign[self.field], self.step)}
+
+    def for_campaign(self, campaign: Mapping) -> MusicIncrease:
+        current = campaign[self.field]
+        target = _plus(current, self.step)
+        return replace(
+            self,
+            title=f"Aumentar a proporção música/voz de {_ratio(current)} para {_ratio(target)}",
+            current=current,
+            target=target,
+            current_label=f"com música/voz {_ratio(current)}",
+            target_label=f"com música/voz {_ratio(target)}",
+        )
+
+    def support_counts(self, support: HistoricalSupport, context: Mapping) -> tuple[int, int]:
+        (low, high), (target_low, target_high) = self._windows()
+        return (
+            support.count_between(MUSIC_HUNDREDTHS, low, high, **context),
+            support.count_between(MUSIC_HUNDREDTHS, target_low, target_high, **context),
+        )
+
+    @property
+    def support_labels(self) -> tuple[str, str]:
+        current, target = (
+            f"com música/voz entre {_hundredths(low)} e {_hundredths(high)}"
+            for low, high in self._windows()
+        )
+        return current, target
+
+    @property
+    def support_note(self) -> str:
+        return f"janelas de {_hundredths(self._width())} em torno do valor atual e do sugerido"
+
+    def rationale_note(self, association: Association | None) -> str:
+        return (
+            f"A regressão usa as {association.n} campanhas da base, de todos os objetivos, com "
+            f"{association.metric_name} e música/voz registradas, e trata a música como termo "
+            "linear. Essa amostra não se confunde com as contagens do suporte histórico, que "
+            "só descrevem a base de comparação no recorte. Retenção é a fração média do vídeo "
+            "assistida (tempo médio assistido ÷ duração, até 100%), uma proxy de atenção. O "
+            f"valor sugerido nunca passa de {_ratio(self.maximum)}, o percentil 90 da base: é "
+            "um limite contra extrapolação, não uma proporção ideal."
+        )
+
+    def next_step_note(self) -> str:
+        return (
+            "O ganho associado é pequeno: o teste precisa de amostra suficiente para detectá-lo. "
+            "Confira também se a narração, com menos espaço, continua passando a mensagem."
+        )
+
+    def _width(self) -> int:
+        return round(self.step * 100)
+
+    def _windows(self) -> tuple[tuple[int, int], tuple[int, int]]:
+        """Janelas adjacentes, em centésimos: [x − 5, x + 4] e [x + 5, x + 14] para 0,1."""
+        width = self._width()
+        start = to_hundredths(self.current) - width // 2
+        return (start, start + width - 1), (start + width, start + 2 * width - 1)
+
+
+def _plus(value: float, step: float) -> float:
+    """Soma sem o resíduo binário: 0,57 + 0,1 dá 0,6699999999999999 em ponto flutuante."""
+    return round(value + step, 10)
+
+
+def _ratio(value: float) -> str:
+    """Música/voz com as casas que o valor tem, no mínimo duas: 0,40; 0,39; 0,571."""
+    decimals = max(2, len(f"{value:.6f}".rstrip("0").split(".")[1]))
+    return fmt_number(value, decimals)
+
+
+def _hundredths(value: int) -> str:
+    """Centésimos inteiros como proporção: 37 → 0,37. Abaixo de zero, a janela começa em 0."""
+    return fmt_number(max(value, 0) / 100, 2)
 
 
 def _add(key: str, title: str, field: str, feature: str, phrase: str) -> Action:
@@ -195,11 +373,23 @@ ACTIONS = [
         ("vídeo quadrado", "vídeo horizontal"),
         platform="LinkedIn",
     ),
+    # Só na retenção, a única métrica em que a música tem associação; os valores vêm de cada
+    # campanha (``for_campaign``).
+    MusicIncrease(
+        "musica",
+        "Aumentar a proporção música/voz em 0,1",
+        "music_voice_ratio",
+        None,
+        None,
+        "com a música/voz atual",
+        "com 0,1 a mais de música",
+        "aumentar a proporção música/voz em 0,1",
+        metrics=("completion_rate",),
+    ),
 ]
 # Edições avaliadas na Etapa 1 que o engine não recomenda (notebook 04, seção 8).
 DISCARDED = {
     "texto_alto_baixo": "citada como alternativa na recomendação de texto alto → médio",
-    "musica": "efeito pequeno, com score e retenção em direções opostas",
     "duracao": "nenhuma associação, com intervalos estreitos",
     "formato_meta_quadrado": "sem associação e sem diferença de score",
 }
@@ -260,13 +450,26 @@ class Support:
     n_target: int
     risk: str
     minimum: int
+    current_label: str  # os dois grupos comparados, como "sem hook" e "com hook"
+    target_label: str
+    note: str | None = None  # como os grupos aproximam os valores, quando não são exatos
+
+    def describe(self) -> str:
+        """Os dois lados da comparação e o recorte, numa frase."""
+        note = f"; {self.note}" if self.note else ""
+        return (
+            f"{self.n_current} campanhas {self.current_label} e {self.n_target} "
+            f"{self.target_label} (recorte: {self.level}{note})"
+        )
 
     def to_dict(self) -> dict:
-        return {
+        payload = {
             "recorte": self.level,
             "contexto": self.context,
             "campanhas_valor_atual": self.n_current,
             "campanhas_valor_sugerido": self.n_target,
+            "grupo_valor_atual": self.current_label,
+            "grupo_valor_sugerido": self.target_label,
             "minimo_por_lado": self.minimum,
             "risco_extrapolacao": self.risk,
             "observacao": (
@@ -274,6 +477,9 @@ class Support:
                 "estimativa do efeito nesse recorte"
             ),
         }
+        if self.note:
+            payload["aproximacao"] = self.note
+        return payload
 
 
 @dataclass(frozen=True)
@@ -301,6 +507,8 @@ class Recommendation:
     priority_note: str | None
     warnings: tuple[str, ...]
     next_step: str
+    caveats: tuple[str, ...] = (NO_CAVEAT,)  # rótulos curtos dos avisos, para o resumo
+    manual_metric: bool = False
 
     @property
     def score_change(self) -> float:
@@ -308,11 +516,18 @@ class Recommendation:
 
     @property
     def estimated_impact(self) -> str:
-        """O impacto estimado, separado da prioridade: na métrica do objetivo ou só no score."""
+        """O impacto estimado, separado da prioridade: na métrica avaliada ou só no score."""
         if self.recommendation_class in ("A", "B"):
             return self.association.describe()
         change = fmt_signed(self.score_change, 1)
         return f"Klike Score {change} pontos; sem evidência suficiente em {self.metric_name}"
+
+    @property
+    def headline(self) -> str:
+        """Impacto e score numa linha, para o resumo executivo."""
+        if self.recommendation_class == "C":
+            return self.estimated_impact  # a classe C já se mede pelo score
+        return f"{self.estimated_impact} · score {fmt_signed(self.score_change, 1)}"
 
     def to_dict(self) -> dict:
         estimate, low, high = self.model_change
@@ -326,7 +541,7 @@ class Recommendation:
             "de": self.current_label,
             "para": self.suggested_label,
             "classe": self.recommendation_class,
-            "classe_descricao": CLASS_LABELS[self.recommendation_class],
+            "classe_descricao": class_label(self.recommendation_class, self.manual_metric),
             "impacto_estimado": self.estimated_impact,
             "metrica": self.metric,
             "metrica_nome": self.metric_name,
@@ -345,7 +560,21 @@ class Recommendation:
             "justificativa": self.rationale,
             "nota_de_prioridade": self.priority_note,
             "avisos": list(self.warnings),
+            "ressalvas": list(self.caveats),
             "proximo_passo": self.next_step,
+        }
+
+    def executive_entry(self) -> dict:
+        """A recomendação no resumo executivo: o essencial e as ressalvas curtas."""
+        return {
+            "prioridade": self.priority,
+            "acao": self.action,
+            "titulo": self.title,
+            "classe": self.recommendation_class,
+            "metrica_nome": self.metric_name,
+            "impacto_estimado": self.estimated_impact,
+            "diferenca_score": round(self.score_change, 2),
+            "ressalvas": list(self.caveats),
         }
 
 
@@ -370,6 +599,43 @@ class RecommendationReport:
     def __post_init__(self) -> None:
         object.__setattr__(self, "context", {col: self.campaign[col] for col in CONTEXT_COLS})
 
+    @property
+    def objective_metric(self) -> str:
+        """A métrica principal do objetivo da campanha, pela premissa de ``OBJECTIVE_METRICS``."""
+        return OBJECTIVE_METRICS[self.objective]
+
+    @property
+    def metric_is_manual(self) -> bool:
+        """A métrica avaliada foi escolhida na chamada, no lugar da principal do objetivo."""
+        return self.metric != self.objective_metric
+
+    @property
+    def executive(self) -> tuple[Recommendation, ...]:
+        """As recomendações do resumo executivo: as primeiras, na ordem do engine."""
+        return self.recommendations[:EXECUTIVE_SIZE]
+
+    def composition(self) -> dict:
+        """Quantas recomendações há, e quantas têm evidência na métrica avaliada."""
+        counts = {k: sum(r.recommendation_class == k for r in self.recommendations) for k in "ABC"}
+        total = len(self.recommendations)
+        return {
+            "recomendacoes": total,
+            "com_evidencia_na_metrica": counts["A"] + counts["B"],
+            "hipoteses_de_score": counts["C"],
+            "por_classe": counts,
+            "menos_de_tres": total < 3,
+        }
+
+    def metric_line(self) -> str:
+        """A métrica avaliada, dizendo quando ela não é a principal do objetivo."""
+        if not self.metric_is_manual:
+            return f"Métrica do objetivo: {self.metric_name}"
+        principal = PERFORMANCE_METRICS[self.objective_metric]
+        return (
+            f"Métrica avaliada: {self.metric_name} (selecionada manualmente; a métrica principal "
+            f"de {self.objective} é {principal})"
+        )
+
     def to_dict(self) -> dict:
         return {
             "campanha_id": self.campaign_id,
@@ -378,10 +644,14 @@ class RecommendationReport:
             "objetivo": self.objective,
             "metrica": self.metric,
             "metrica_nome": self.metric_name,
+            "metrica_principal_do_objetivo": self.objective_metric,
+            "metrica_selecionada_manualmente": self.metric_is_manual,
             "score_previsto": round(self.predicted_score, 2),
             "observado": self.observed,
             "campanhas_na_mesma_combinacao": self.combination_support,
             "resumo": self.summary,
+            "composicao": self.composition(),
+            "principais": [r.executive_entry() for r in self.executive],
             "nota_metodologica": METHOD_NOTE,
             "avisos": list(self.notes),
             "recomendacoes": [r.to_dict() for r in self.recommendations],
@@ -403,9 +673,10 @@ class RecommendationReport:
                     f"({fmt_signed(r.score_change, 1)})"
                 ),
                 "suporte histórico contextual": (
-                    f"{r.support.n_current} {r.current_label}, {r.support.n_target} "
-                    f"{r.suggested_label} ({r.support.level})"
+                    f"{r.support.n_current} {r.support.current_label}, {r.support.n_target} "
+                    f"{r.support.target_label} ({r.support.level})"
                 ),
+                "ressalvas": " · ".join(r.caveats),
                 "avisos": len(r.warnings),
             }
             for r in self.recommendations
@@ -413,7 +684,7 @@ class RecommendationReport:
         return pd.DataFrame(rows).set_index("prioridade") if rows else pd.DataFrame()
 
     def to_text(self) -> str:
-        """Relatório em texto, para a linha de comando."""
+        """Relatório em texto, para a linha de comando: resumo executivo e depois o detalhe."""
         c = self.campaign
         header = " · ".join(
             [
@@ -428,20 +699,29 @@ class RecommendationReport:
         score = f"Score previsto: {fmt_number(self.predicted_score, 1)}"
         if self.observed and self.observed.get(TARGET) is not None:
             score += f" (observado: {fmt_number(self.observed[TARGET], 1)})"
-        lines = [header, f"Métrica do objetivo: {self.metric_name}", score, "", self.summary]
+        lines = [header, self.metric_line(), score, "", self.summary]
+        if self.executive:
+            total, shown = len(self.recommendations), len(self.executive)
+            count = "" if shown == total else f" ({shown} de {total})"
+            lines += ["", f"Principais recomendações{count}:"]
+            for r in self.executive:
+                lines += [
+                    f"   {r.priority}. {r.title} · classe {r.recommendation_class}",
+                    f"      {r.headline}",
+                    f"      Ressalvas: {' · '.join(r.caveats)}",
+                ]
+            lines += ["", "Em detalhe:"]
         for r in self.recommendations:
             _, low, high = r.model_change
             lines += [
                 "",
                 f"{r.priority}. {r.title}  [classe {r.recommendation_class}: "
-                f"{CLASS_LABELS[r.recommendation_class]}]",
+                f"{class_label(r.recommendation_class, r.manual_metric)}]",
                 f"   Impacto estimado: {r.estimated_impact}",
                 f"   Score previsto: {fmt_number(r.score_before, 1)} → "
                 f"{fmt_number(r.score_after, 1)} ({fmt_signed(r.score_change, 1)}; intervalo do "
                 f"modelo: {_points(low)} a {_points(high)})",
-                f"   Suporte histórico contextual: {r.support.n_current} campanhas "
-                f"{r.current_label} e {r.support.n_target} {r.suggested_label} (recorte: "
-                f"{r.support.level})",
+                f"   Suporte histórico contextual: {r.support.describe()}",
                 f"   Por quê: {r.rationale}",
             ]
             if r.priority_note:
@@ -496,7 +776,9 @@ class RecommendationEngine:
     ) -> RecommendationReport:
         """Recomendações para uma campanha, em ordem de prioridade.
 
-        ``metric`` troca a métrica do objetivo por outra de ``PERFORMANCE_METRICS``.
+        ``metric`` troca a métrica do objetivo por outra de ``PERFORMANCE_METRICS``, e a saída
+        diz que ela foi escolhida manualmente. Uma edição com escopo de métrica, como a
+        música/voz, só é avaliada nas métricas do escopo.
         """
         frame = _single_campaign(campaign)
         current = _canonical(prepare_features(frame, strict=True).iloc[0])
@@ -511,7 +793,11 @@ class RecommendationEngine:
                 "escolha outra métrica."
             )
 
-        applicable = [action for action in ACTIONS if action.applies_to(current)]
+        applicable = [
+            action.for_campaign(current)
+            for action in ACTIONS
+            if action.evaluated_for(metric) and action.applies_to(current)
+        ]
         scenarios = [current] + [action.apply(current) for action in applicable]
         scores = self.predictor.predict(scenarios).to_numpy()
         combination = self.predictor.support.count(
@@ -537,7 +823,7 @@ class RecommendationEngine:
             recommendations=ranked,
             not_recommended=tuple(skipped),
             notes=self._campaign_notes(current),
-            summary=_summary(ranked, current),
+            summary=_summary(ranked, current, metric != OBJECTIVE_METRICS[current["objective"]]),
             campaign_id=_campaign_id(frame.iloc[0]),
             combination_support=combination,
         )
@@ -570,6 +856,8 @@ class RecommendationEngine:
                     f"só {available} campanhas {action.target_label} no {action.platform}, "
                     f"menos que o mínimo de {self.min_support}"
                 )
+        manual = metric != OBJECTIVE_METRICS[current["objective"]]
+        ref = _metric_ref(manual)
         association = self._association(action.key, metric, current)
         model = self._model_change(action.key)
         favorable = association is not None and association.effect > 0
@@ -581,21 +869,20 @@ class RecommendationEngine:
             klass = "B"
         elif model[1] <= 0:
             return (
-                "sem evidência suficiente na métrica do objetivo, e o intervalo do score do "
-                "modelo inclui zero"
+                f"sem evidência suficiente na {ref}, e o intervalo do score do modelo não fica "
+                "acima de zero"
             )
         elif after <= before:
             return (
-                "sem evidência suficiente na métrica do objetivo, e o score previsto já está no "
-                "limite da escala"
+                f"sem evidência suficiente na {ref}, e o score previsto já está no limite da escala"
             )
         else:
             klass = "C"
         if klass == "C" and combination == 0:
             return (
                 f"sugestão só de score numa combinação sem histórico ({current['platform']} com "
-                f"vídeo {current['format']}): sem evidência na métrica do objetivo, o ganho "
-                "previsto não tem base observada"
+                f"vídeo {current['format']}): sem evidência na {ref}, o ganho previsto não tem "
+                "base observada"
             )
         support = self._support(action, current)
         if support is None:
@@ -604,6 +891,7 @@ class RecommendationEngine:
             action=action,
             klass=klass,
             metric=metric,
+            manual_metric=manual,
             association=association,
             others=self._other_associations(action.key, metric, current),
             before=before,
@@ -663,27 +951,34 @@ class RecommendationEngine:
         """Primeiro recorte, do mais específico ao mais amplo, com o mínimo de cada lado.
 
         O formato é comparado sempre dentro da plataforma, então para no recorte da plataforma.
+        A música/voz é contada em janelas em torno do valor atual e do sugerido.
         """
-        column, current_value, target_value = action.support_condition
         levels = SUPPORT_LEVELS[:-1] if action.platform else SUPPORT_LEVELS
         for name, columns, risk in levels:
             context = {col: campaign[col] for col in columns}
-            n_current = self.predictor.support.count(**context, **{column: current_value})
-            n_target = self.predictor.support.count(**context, **{column: target_value})
+            n_current, n_target = action.support_counts(self.predictor.support, context)
             if min(n_current, n_target) >= self.min_support:
-                return Support(name, context, n_current, n_target, risk, self.min_support)
+                return Support(
+                    name,
+                    context,
+                    n_current,
+                    n_target,
+                    risk,
+                    self.min_support,
+                    *action.support_labels,
+                    note=action.support_note,
+                )
         return None
 
     def _campaign_notes(self, campaign: dict) -> tuple[str, ...]:
         notes = []
-        for col, label in [
-            ("video_duration_s", "Duração"),
-            ("music_voice_ratio", "Proporção música/voz"),
-        ]:
-            if campaign[col] is None:
-                notes.append(
-                    f"{label} não informada: o modelo usa a mediana das campanhas de treino."
-                )
+        if campaign["video_duration_s"] is None:
+            notes.append("Duração não informada: o modelo usa a mediana das campanhas de treino.")
+        if campaign["music_voice_ratio"] is None:
+            notes.append(
+                "Proporção música/voz não informada: o modelo usa a mediana das campanhas de "
+                "treino, e o engine não sugere mudá-la."
+            )
         if campaign["has_subtitle"] is None:
             notes.append(
                 "Legenda sem marcação: o engine não sabe se o vídeo tem legenda e não sugere "
@@ -705,6 +1000,7 @@ class _Candidate:
     action: Action
     klass: str
     metric: str
+    manual_metric: bool  # a métrica foi escolhida na chamada, não pelo objetivo
     association: Association | None
     others: tuple[Association, ...]
     before: float
@@ -738,6 +1034,7 @@ def _rank(candidates: list[_Candidate]) -> tuple[Recommendation, ...]:
 
 def _recommendation(priority: int, c: _Candidate, above: list[_Candidate]) -> Recommendation:
     action = c.action
+    warnings = _warnings(c)
     return Recommendation(
         priority=priority,
         action=action.key,
@@ -758,9 +1055,17 @@ def _recommendation(priority: int, c: _Candidate, above: list[_Candidate]) -> Re
         support=c.support,
         rationale=_rationale(c),
         priority_note=_priority_note(c, above),
-        warnings=_warnings(c),
+        warnings=tuple(text for _, text in warnings),
         next_step=_next_step(c),
+        caveats=_caveats(label for label, _ in warnings),
+        manual_metric=c.manual_metric,
     )
+
+
+def _caveats(labels: Iterable[str]) -> tuple[str, ...]:
+    """Rótulos curtos, sem repetição e na ordem de ``CAVEATS``; sem aviso, a ressalva geral."""
+    present = set(labels)
+    return tuple(label for label in CAVEATS if label in present) or (NO_CAVEAT,)
 
 
 # --------------------------------------------------------------------------- #
@@ -784,10 +1089,13 @@ def _rationale(c: _Candidate) -> str:
     elif a is not None:
         parts = [
             f"O modelo prevê mais score, mas não há evidência suficiente de ganho em {metric}, "
-            f"a métrica do objetivo: {a.interval()}, {EVIDENCE_PHRASES[a.evidence]}."
+            f"a {_metric_ref(c.manual_metric)}: {a.interval()}, {EVIDENCE_PHRASES[a.evidence]}."
         ]
     else:
         parts = [f"O modelo prevê mais score; não há como medir a associação com {metric}."]
+    note = action.rationale_note(a)
+    if note:
+        parts.append(note)
     if c.others:
         parts.append(
             "Em outras métricas: " + "; ".join(other.describe() for other in c.others) + "."
@@ -813,8 +1121,8 @@ def _priority_note(c: _Candidate, above: list[_Candidate]) -> str | None:
         return None
     if any(other.klass in ("A", "B") for other in above):
         return (
-            "Oportunidade de score: fica depois das recomendações com evidência na métrica do "
-            "objetivo."
+            "Oportunidade de score: fica depois das recomendações com evidência na "
+            f"{_metric_ref(c.manual_metric)}."
         )
     larger = [
         other.action.title.lower()
@@ -829,53 +1137,81 @@ def _priority_note(c: _Candidate, above: list[_Candidate]) -> str | None:
     return None
 
 
-def _warnings(c: _Candidate) -> tuple[str, ...]:
-    warnings = [c.scenario] if c.scenario else []
+def _warnings(c: _Candidate) -> list[tuple[str, str]]:
+    """Avisos da recomendação, cada um com o seu rótulo curto (``CAVEATS``)."""
+    warnings = [("extrapolação", c.scenario)] if c.scenario else []
     a = c.association
+    metric = PERFORMANCE_METRICS[c.metric]
     if a is None:
-        metric = PERFORMANCE_METRICS[c.metric]
-        warnings.append(f"Sem associação mensurável com {metric} nesta campanha.")
+        warnings.append(
+            ("sem associação mensurável", f"Sem associação mensurável com {metric} nesta campanha.")
+        )
     elif a.evidence == "inconclusivo" and a.effect < 0:
         warnings.append(
-            f"A associação com {a.metric_name} é inconclusiva e de sinal desfavorável: "
-            f"{a.interval()}."
+            (
+                "estimativa desfavorável e inconclusiva",
+                f"A associação com {a.metric_name} é inconclusiva e de sinal desfavorável: "
+                f"{a.interval()}.",
+            )
         )
     if a and a.sensitivity:
-        warnings.append(f"A classe depende da análise: {a.sensitivity}.")
-    warnings += [f"Associada a {other.describe()}." for other in c.others if other.effect < 0]
+        warnings.append(
+            ("classe sensível à análise", f"A classe depende da análise: {a.sensitivity}.")
+        )
+    warnings += [
+        ("desfavorável em outra métrica", f"Associada a {other.describe()}.")
+        for other in c.others
+        if other.effect < 0
+    ]
     estimate, low, high = c.model
     if 0 < low < BORDERLINE_SCORE:
         warnings.append(
-            f"Ganho de score limítrofe: o intervalo do modelo vai de {_points(low)} a "
-            f"{_points(high)} pontos. É uma candidata experimental, não uma melhoria de "
-            "alta confiança."
+            (
+                "ganho de score limítrofe",
+                f"Ganho de score limítrofe: o intervalo do modelo vai de {_points(low)} a "
+                f"{_points(high)} pontos. É uma candidata experimental, não uma melhoria de "
+                "alta confiança.",
+            )
         )
     if c.support.risk != "baixo":
         warnings.append(
-            f"Pouca base no contexto da campanha: só no recorte {c.support.level} há pelo menos "
-            f"{c.support.minimum} campanhas de cada lado da comparação."
+            (
+                SUPPORT_CAVEATS[c.support.risk],
+                f"Pouca base no contexto da campanha: só no recorte {c.support.level} há pelo "
+                f"menos {c.support.minimum} campanhas de cada lado da comparação.",
+            )
         )
+    # Os dois avisos de score são independentes: perto de 0, uma queda pode ser cortada pela
+    # escala e continuar sendo queda.
     change = c.after - c.before
     if change < 0:
-        warnings.append(f"O score previsto cai {fmt_number(-change, 1)} pontos com esta edição.")
-    elif abs(change - estimate) > 0.05:
         warnings.append(
-            "A previsão encosta no limite da escala: a diferença nesta campanha é menor que a do "
-            "modelo."
+            (
+                "score previsto cai",
+                f"O score previsto cai {_magnitude(change)} pontos com esta edição: o modelo do "
+                f"Klike Score e a associação com {metric} apontam em direções opostas.",
+            )
+        )
+    if abs(change - estimate) > 0.05:
+        warnings.append(
+            (
+                "score no limite da escala",
+                "A previsão encosta no limite da escala: nesta campanha, a diferença de score é "
+                "menor, em módulo, que a do modelo.",
+            )
         )
     if c.klass == "C":
-        metric = PERFORMANCE_METRICS[c.metric]
         warning = (
-            f"Sem evidência suficiente de ganho em {metric}, a métrica do objetivo: é uma "
-            "oportunidade de score, não um ganho comprovado nessa métrica."
+            f"Sem evidência suficiente de ganho em {metric}, a {_metric_ref(c.manual_metric)}: "
+            "é uma oportunidade de score, não um ganho comprovado nessa métrica."
         )
         favorable = [other.metric_name for other in c.others if other.effect > 0]
         if favorable:
             warning += (
                 f" Em outras métricas, a base mostra associação favorável: {_join(favorable)}."
             )
-        warnings.append(warning)
-    return tuple(warnings)
+        warnings.append(("sem evidência na métrica", warning))
+    return warnings
 
 
 def _next_step(c: _Candidate) -> str:
@@ -885,7 +1221,9 @@ def _next_step(c: _Candidate) -> str:
             f"Testar em A/B antes de adotar, medindo {metric}: a base não mostra ganho suficiente "
             "nessa métrica."
         )
-    return f"Teste A/B da versão {c.action.target_label} contra a atual, medindo {metric}."
+    step = f"Teste A/B da versão {c.action.target_label} contra a atual, medindo {metric}."
+    note = c.action.next_step_note()
+    return f"{step} {note}" if note else step
 
 
 def _scenario_warning(campaign: dict, combination: int, minimum: int) -> str | None:
@@ -904,19 +1242,39 @@ def _scenario_warning(campaign: dict, combination: int, minimum: int) -> str | N
     )
 
 
-def _summary(recommendations: tuple[Recommendation, ...], campaign: dict) -> str:
+def _summary(
+    recommendations: tuple[Recommendation, ...], campaign: dict, manual_metric: bool = False
+) -> str:
+    """Composição da lista: quantas têm evidência na métrica avaliada e quantas são só de score.
+
+    Uma oportunidade de score (C) nunca é chamada de melhoria.
+    """
     total = len(recommendations)
     present = _practices_present(campaign)
     if total == 0:
         return f"Nenhuma edição do catálogo tem base para esta campanha. {present}"
     counts = {k: sum(r.recommendation_class == k for r in recommendations) for k in "ABC"}
-    parts = [f"{counts[k]} de classe {k}" for k in "ABC" if counts[k]]
+    evidence, scores = counts["A"] + counts["B"], counts["C"]
+    ref = _metric_ref(manual_metric)
     noun = "recomendação" if total == 1 else "recomendações"
-    text = f"{total} {noun}: {_join(parts)}."
+    if evidence:
+        classes = _join([f"{counts[k]} de classe {k}" for k in "AB" if counts[k]])
+    if evidence and scores:
+        hypotheses = "hipótese" if scores == 1 else "hipóteses"
+        text = (
+            f"{total} {noun}: {evidence} com evidência na {ref} ({classes}) e {scores} "
+            f"{hypotheses} de score (classe C)."
+        )
+    elif evidence:
+        every = "todas " if total > 1 else ""
+        text = f"{total} {noun}, {every}com evidência na {ref} ({classes})."
+    else:
+        every = "todas hipóteses" if total > 1 else "hipótese"
+        text = f"{total} {noun}, {every} de score (classe C), sem evidência suficiente na {ref}."
     if total < 3:
         text += (
-            " Há menos de três melhorias defensáveis para esta campanha, e o engine não completa "
-            f"a lista com sugestões sem base. {present}"
+            " Há menos de três recomendações defensáveis para esta campanha, e o engine não "
+            f"completa a lista com sugestões sem base. {present}"
         )
     return text
 
@@ -946,9 +1304,22 @@ def _points(value: float) -> str:
     return fmt_signed(value, 2 if 0 < abs(value) < 0.05 else 1)
 
 
+def _magnitude(value: float) -> str:
+    """Pontos de score sem sinal; perto de zero, duas casas, para não parecer zero."""
+    return fmt_number(abs(value), 2 if 0 < abs(value) < 0.05 else 1)
+
+
 def _pct(value: float) -> str:
-    """Variação percentual com sinal; perto de zero, uma casa, para não parecer zero."""
-    return fmt_signed_pct(value, 1 if 0 < abs(value) < 0.005 else 0)
+    """Variação percentual com sinal, sem arredondar duas vezes.
+
+    Perto de zero, uma casa, para não parecer zero. Quando o valor registrado cai exatamente
+    na metade, ganha uma casa: o rosto no CTR, registrado como 0,2350, sai +23,5%, e não +24%,
+    porque a estimativa exata é 23,496%.
+    """
+    decimals = 1 if 0 < abs(value) < 0.005 else 0
+    if round(abs(value) * 100 * 10**decimals, 6) % 1 == 0.5:
+        decimals += 1
+    return fmt_signed_pct(value, decimals)
 
 
 def _history(n: int) -> str:

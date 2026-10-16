@@ -2,7 +2,8 @@
 
 Conferem as regras de elegibilidade, a separação entre score, associação, classe e suporte,
 a ordem das recomendações e os casos difíceis: dados ausentes, combinações sem histórico,
-ganho limítrofe, pouca base e conflito entre score e performance.
+ganho limítrofe, pouca base, conflito entre score e performance, a edição contínua de
+música/voz, a métrica escolhida manualmente e o resumo executivo.
 """
 
 import itertools
@@ -13,7 +14,7 @@ import pandas as pd
 import pytest
 
 from klike.data import load_clean
-from klike.engine import ACTIONS, MIN_SUPPORT, RecommendationEngine
+from klike.engine import ACTIONS, CAVEATS, MIN_SUPPORT, NO_CAVEAT, RecommendationEngine
 from klike.evidence import load_performance_evidence, load_score_differences
 from klike.predictor import KlikeScorePredictor, train_final_model
 from klike.recommend import main
@@ -125,12 +126,11 @@ def test_never_recommends_what_the_campaign_already_has(engine):
 
 def test_each_edit_changes_only_its_own_field():
     for action in ACTIONS:
-        campaign = {
-            **CAMPAIGN,
-            "platform": action.platform or "TikTok",
-            action.field: action.current,
-        }
-        edited = action.apply(campaign)
+        # A música não tem valor fixo de partida: ele vem de cada campanha.
+        start = 0.35 if action.current is None else action.current
+        campaign = {**CAMPAIGN, "platform": action.platform or "TikTok", action.field: start}
+        assert action.applies_to(campaign)
+        edited = action.for_campaign(campaign).apply(campaign)
         assert {k for k in campaign if campaign[k] != edited[k]} == {action.field}
 
 
@@ -472,3 +472,278 @@ def test_roas_is_rejected_for_branding(engine, tmp_path):
     with pytest.raises(SystemExit) as error:
         main(["--arquivo", str(path), "--metrica", "roas_non_branding"])
     assert error.value.code == 1
+
+
+# --------------------------------------------------------------------------- #
+# Música/voz: edição contínua, avaliada só na retenção
+# --------------------------------------------------------------------------- #
+# Criativo completo numa campanha de awareness: a única edição aplicável é a música.
+AWARENESS = COMPLETE | {"objective": "awareness"}
+MUSIC = next(action for action in ACTIONS if action.key == "musica")
+
+
+def test_music_is_a_retention_edit_with_its_caveats(engine):
+    report = engine.recommend(AWARENESS)
+    assert actions(report) == ["musica"]
+    music = report.recommendations[0]
+    assert music.recommendation_class == "A"
+    assert (music.current_value, music.suggested_value) == (0.35, 0.45)
+    assert music.title == "Aumentar a proporção música/voz de 0,35 para 0,45"
+    assert music.score_change == pytest.approx(-0.47, abs=0.01)
+    assert any(w.startswith("O score previsto cai 0,5 pontos") for w in music.warnings)
+    assert music.caveats[0] == "score previsto cai"
+    # Abrangência: a amostra da regressão, separada do suporte; plataformas sem afirmar igualdade.
+    assert "A regressão usa as 404 campanhas da base, de todos os objetivos" in music.rationale
+    assert "não se confunde com as contagens do suporte histórico" in music.rationale
+    assert "o que não prova que ele seja igual em todas" in music.rationale
+    assert "uma proxy de atenção" in music.rationale
+    assert "não uma proporção ideal" in music.rationale
+    assert "amostra suficiente" in music.next_step
+    assert "narração" in music.next_step
+    # O impacto é na retenção; o score aparece caindo, nunca como melhora.
+    assert music.estimated_impact.startswith("retenção +4%")
+    assert music.headline.endswith("· score −0,5")
+
+
+def test_music_support_counts_integer_windows_around_the_values(engine, history):
+    music = engine.recommend(AWARENESS).recommendations[0]
+    # Contagem manual, em centésimos inteiros, no recorte que o engine usou.
+    rows = history
+    for column, value in music.support.context.items():
+        rows = rows[rows[column] == value]
+    hundredths = (rows["music_voice_ratio"].dropna() * 100).round().astype(int)
+    assert music.support.n_current == hundredths.between(30, 39).sum()
+    assert music.support.n_target == hundredths.between(40, 49).sum()
+    assert music.support.current_label == "com música/voz entre 0,30 e 0,39"
+    assert music.support.target_label == "com música/voz entre 0,40 e 0,49"
+    assert "janelas de 0,10" in music.support.describe()
+    assert music.to_dict()["suporte"]["aproximacao"] == music.support.note
+
+
+@pytest.mark.parametrize("objective", ["traffic", "engagement", "conversions", "app_install"])
+def test_music_is_not_evaluated_outside_retention(engine, objective):
+    report = engine.recommend(AWARENESS | {"objective": objective})
+    assert report.recommendations == ()
+    assert "musica" not in dict(report.not_recommended)
+
+
+def test_manual_retention_metric_evaluates_music_and_says_so(engine):
+    report = engine.recommend(AWARENESS | {"objective": "traffic"}, metric="completion_rate")
+    assert actions(report) == ["musica"]
+    assert report.metric_is_manual
+    text, payload = report.to_text(), report.to_dict()
+    assert (
+        "Métrica avaliada: retenção (selecionada manualmente; a métrica principal de traffic é CTR)"
+    ) in text
+    assert payload["metrica_selecionada_manualmente"] is True
+    assert payload["metrica_principal_do_objetivo"] == "ctr"
+    assert "métrica do objetivo" not in text + json.dumps(payload, ensure_ascii=False)
+    default = engine.recommend(AWARENESS)
+    assert not default.metric_is_manual
+    assert default.to_dict()["metrica_selecionada_manualmente"] is False
+    assert "Métrica do objetivo: retenção" in default.to_text()
+
+
+def test_manual_metric_changes_every_reference_to_the_objective_metric(engine):
+    report = engine.recommend(
+        AWARENESS | {"objective": "traffic", "text_density": "low"}, metric="completion_rate"
+    )
+    text = by_action(report, "texto_baixo_medio")
+    assert text.recommendation_class == "C"
+    assert text.to_dict()["classe_descricao"].endswith("na métrica selecionada")
+    assert any("retenção, a métrica selecionada" in w for w in text.warnings)
+    assert text.priority_note.endswith("com evidência na métrica selecionada.")
+    assert "com evidência na métrica selecionada" in report.summary
+
+
+@pytest.mark.parametrize(
+    ("value", "applies"),
+    [
+        (0.0, True),
+        (0.57, True),
+        (0.47 + 0.1, True),  # 0,5700000000000001: o resíduo binário não tira a edição
+        (0.571, False),
+        (0.574, False),  # arredondada para centésimos, passaria
+        (0.58, False),
+        (None, False),
+    ],
+)
+def test_music_eligibility_uses_the_exact_value(value, applies):
+    assert MUSIC.applies_to(AWARENESS | {"music_voice_ratio": value}) is applies
+
+
+def test_new_campaigns_keep_the_exact_music_value(engine, predictor):
+    campaign = AWARENESS | {"music_voice_ratio": 0.333}
+    music = by_action(engine.recommend(campaign), "musica")
+    assert (music.current_value, music.suggested_value) == (0.333, 0.433)
+    after = predictor.predict(campaign | {"music_voice_ratio": 0.433}).iloc[0]
+    assert music.score_after == pytest.approx(after)
+    assert music.title.endswith("de 0,333 para 0,433")
+    # Os centésimos só centram as janelas do suporte: 0,333 vira 33.
+    assert music.support.current_label == "com música/voz entre 0,28 e 0,37"
+    assert MUSIC.for_campaign(campaign | {"music_voice_ratio": 0.571}).title.endswith(
+        "de 0,571 para 0,671"
+    )
+
+
+def test_missing_music_is_neither_suggested_nor_treated_as_voice(engine):
+    report = engine.recommend(AWARENESS | {"music_voice_ratio": None})
+    assert report.recommendations == ()
+    assert any("o engine não sugere mudá-la" in note for note in report.notes)
+
+
+def test_music_has_no_favorable_evidence_outside_retention():
+    # Salvaguarda do escopo: se as evidências mudarem, o escopo da música precisa ser revisto.
+    evidence = load_performance_evidence()
+    music = evidence[evidence["transicao"] == "musica"].set_index("metrica")
+    favorable = music[(music["efeito"] > 0) & music["evidencia"].isin(["robusto", "indício"])]
+    assert list(favorable.index) == ["completion_rate"]
+    assert MUSIC.metrics == ("completion_rate",)
+
+
+def test_rare_combination_keeps_music_with_extrapolation_first(predictor):
+    # Com mínimo de 12, os 11 vídeos verticais do LinkedIn viram uma combinação rara.
+    engine = RecommendationEngine(
+        predictor, load_performance_evidence(), load_score_differences(), min_support=12
+    )
+    report = engine.recommend(AWARENESS | {"platform": "LinkedIn", "format": "vertical"})
+    music = by_action(report, "musica")
+    assert music.warnings[0].startswith("Extrapolação")
+    assert music.caveats[:2] == ("extrapolação", "score previsto cai")
+
+
+# --------------------------------------------------------------------------- #
+# Resumo executivo
+# --------------------------------------------------------------------------- #
+def test_executive_summary_shows_the_first_three_with_short_caveats(engine, history):
+    report = engine.recommend(history.loc[["KLK-0024"]])
+    lines = report.to_text().splitlines()
+    start = lines.index("Principais recomendações (3 de 4):")
+    assert lines[start + 1 : start + 4] == [
+        "   1. Incluir um hook nos 3 primeiros segundos · classe A",
+        "      conversões por mil impressões +48% (de +26% a +75%), evidência robusta · "
+        "score +17,0",
+        f"      Ressalvas: {NO_CAVEAT}",
+    ]
+    assert lines[start + 9] == "      Ressalvas: classe sensível à análise"  # o texto, B
+    payload = report.to_dict()
+    assert [entry["acao"] for entry in payload["principais"]] == [
+        "hook",
+        "rosto",
+        "texto_alto_medio",
+    ]
+    assert payload["composicao"] == {
+        "recomendacoes": 4,
+        "com_evidencia_na_metrica": 3,
+        "hipoteses_de_score": 1,
+        "por_classe": {"A": 2, "B": 1, "C": 1},
+        "menos_de_tres": False,
+    }
+    assert report.summary == (
+        "4 recomendações: 3 com evidência na métrica do objetivo (2 de classe A e 1 de classe B) "
+        "e 1 hipótese de score (classe C)."
+    )
+    frame = report.to_frame()
+    assert list(frame["ressalvas"]) == [" · ".join(r.caveats) for r in report.recommendations]
+
+
+def test_executive_summary_never_calls_score_opportunities_improvements(engine, history):
+    report = engine.recommend(history.loc[["KLK-0013"]])  # três recomendações C
+    assert report.summary == (
+        "3 recomendações, todas hipóteses de score (classe C), sem evidência suficiente na "
+        "métrica do objetivo."
+    )
+    text = report.to_text()
+    block = text[text.index("Principais recomendações") : text.index("Em detalhe:")]
+    assert "melhoria" not in block
+    assert "melhoria" not in report.summary
+    assert all("sem evidência na métrica" in r.caveats for r in report.recommendations)
+
+
+def test_fewer_than_three_recommendations_are_stated_in_the_summary(engine):
+    report = engine.recommend(COMPLETE | {"has_cta": False})
+    assert report.summary.startswith(
+        "1 recomendação, hipótese de score (classe C), sem evidência suficiente na métrica do "
+        "objetivo. Há menos de três recomendações defensáveis"
+    )
+    assert "Principais recomendações:" in report.to_text()  # cabem todas, sem "(n de m)"
+    assert report.to_dict()["composicao"]["menos_de_tres"] is True
+
+
+def test_caveats_follow_the_fixed_precedence_without_hiding_warnings(engine, history):
+    rank = {label: position for position, label in enumerate(CAVEATS)}
+    for cid in ["KLK-0013", "KLK-0203", "KLK-0024"]:
+        for r in engine.recommend(history.loc[[cid]]).recommendations:
+            if r.warnings:
+                # Cada aviso completo tem um rótulo, na ordem de precedência, sem repetição.
+                assert len(r.caveats) == len(r.warnings)
+                assert [rank[c] for c in r.caveats] == sorted(rank[c] for c in r.caveats)
+            else:
+                assert r.caveats == (NO_CAVEAT,)
+    text = by_action(engine.recommend(history.loc[["KLK-0013"]]), "texto_baixo_medio")
+    assert text.caveats == (
+        "sem evidência na métrica",
+        "estimativa desfavorável e inconclusiva",
+        "pouca base no contexto (só na plataforma)",
+    )
+
+
+def test_support_caveat_says_how_wide_the_comparison_had_to_go(engine, history):
+    # Mesmo risco e mesmas contagens: o rótulo só diz onde o engine achou base.
+    moderate = by_action(engine.recommend(history.loc[["KLK-0001"]]), "musica")
+    assert moderate.support.risk == "moderado"
+    assert moderate.caveats[-1] == "pouca base no contexto (só na plataforma)"
+    high = engine.recommend(history.loc[["KLK-0352"]])
+    music = by_action(high, "musica")
+    assert (music.priority, music.support.risk) == (1, "alto")
+    assert music.caveats == ("score previsto cai", "pouca base no contexto (só na base inteira)")
+    assert "Ressalvas: score previsto cai · pouca base no contexto (só na base inteira)" in (
+        high.to_text()
+    )
+
+
+def test_registered_half_values_are_not_rounded_twice(engine, history):
+    # O rosto no CTR está registrado como 0,2350 (estimativa exata: 23,496%): sai +23,5%.
+    face = by_action(
+        engine.recommend(COMPLETE | {"objective": "traffic", "has_face": False}), "rosto"
+    )
+    assert face.estimated_impact.startswith("CTR +23,5% (de +7% a +42%)")
+    hook = by_action(engine.recommend(history.loc[["KLK-0024"]]), "rosto")
+    assert "CTR +23,5% (de +7% a +42%)" in hook.rationale
+    assert "+24%" not in hook.rationale
+
+
+# --------------------------------------------------------------------------- #
+# Score nos limites da escala e intervalo do modelo
+# --------------------------------------------------------------------------- #
+def test_score_fall_and_scale_limit_warnings_are_independent(predictor):
+    def music_with(before, after):
+        stub = KlikeScorePredictor(_Fixed(before, after), predictor.support, predictor.metadata)
+        engine = RecommendationEngine(stub, load_performance_evidence(), load_score_differences())
+        return by_action(engine.recommend(AWARENESS), "musica")
+
+    near_floor = music_with(0.3, -0.17)  # a queda de 0,47 é cortada em 0
+    assert near_floor.score_after == 0
+    assert near_floor.caveats[:2] == ("score previsto cai", "score no limite da escala")
+    assert any(w.startswith("O score previsto cai 0,3 pontos") for w in near_floor.warnings)
+    assert any("menor, em módulo, que a do modelo" in w for w in near_floor.warnings)
+    at_top = music_with(120, 119.53)  # as duas previsões ficam em 100
+    assert at_top.score_change == 0
+    assert "score previsto cai" not in at_top.caveats
+    assert at_top.caveats[0] == "score no limite da escala"
+    unclipped = music_with(50, 49.53)
+    assert "score no limite da escala" not in unclipped.caveats
+
+
+def test_score_opportunity_needs_a_model_interval_above_zero(predictor):
+    # Tabela de score substituta: intervalo do CTA cruzando o zero e todo negativo.
+    for low, high in [(-0.5, 2.0), (-2.0, -0.5)]:
+        scores = load_score_differences()
+        scores.loc[scores["transicao"] == "cta", ["ic_inferior", "ic_superior"]] = [low, high]
+        engine = RecommendationEngine(predictor, load_performance_evidence(), scores)
+        report = engine.recommend(COMPLETE | {"has_cta": False})
+        assert report.recommendations == ()
+        assert dict(report.not_recommended)["cta"] == (
+            "sem evidência suficiente na métrica do objetivo, e o intervalo do score do modelo "
+            "não fica acima de zero"
+        )

@@ -1,8 +1,9 @@
 """Testes da avaliação do recommendations engine.
 
 Conferem que as tabelas descrevem os relatórios sem perder nada, que a ordem refeita pela
-tabela é a do engine, que a auditoria aponta falhas de verdade e que a avaliação salva em
-``reports/`` corresponde ao engine atual.
+tabela é a do engine, que o funil respeita o escopo de métrica de cada edição, que a
+auditoria aponta falhas de verdade e que a avaliação salva em ``reports/`` corresponde ao
+engine atual.
 """
 
 import dataclasses
@@ -11,7 +12,7 @@ import pandas as pd
 import pytest
 
 from klike.data import load_clean
-from klike.engine import RecommendationEngine
+from klike.engine import NO_CAVEAT, RecommendationEngine
 from klike.engine_evaluation import (
     EVALUATION_PATH,
     action_funnel,
@@ -147,3 +148,49 @@ def test_saved_evaluation_matches_the_current_engine(engine):
     saved = pd.read_csv(EVALUATION_PATH).fillna({"outras_metricas_favoraveis": ""})
     current = recommendation_table(engine.recommend_all(load_clean())).round(4)
     pd.testing.assert_frame_equal(saved, current, check_dtype=False)
+
+
+def test_funnel_respects_the_metric_scope_of_each_edit(reports):
+    music = action_funnel(reports).loc["musica"]
+    # Só KLK-0203 é de awareness na amostra; a música nem é avaliada nas outras.
+    assert (music["metricas"], music["campanhas"], music["avaliadas"], music["A"]) == (
+        "retenção",
+        1,
+        1,
+        1,
+    )
+    assert action_funnel(reports).loc["hook", "metricas"] == "todas"
+
+
+def test_audit_covers_music_manual_metric_and_exact_values(engine):
+    new = pd.DataFrame(
+        [
+            NEW | {"objective": "awareness", "format": "quadrado", "music_voice_ratio": value}
+            for value in [0.333, 0.57, 0.571]
+        ]
+        + [NEW | {"objective": "traffic", "format": "quadrado", "music_voice_ratio": 0.2}]
+    )
+    for metric in [None, "completion_rate"]:
+        result = audit(engine, new, metric=metric)
+        assert result["itens"].gt(0).all()
+        assert result["falhas"].eq(0).all()
+    # Com retenção escolhida para todas: 0,333, 0,57 e a de traffic; 0,571 passaria de 0,67.
+    assert result.loc["música só na retenção, +0,1 e até 0,67", "itens"] == 3
+
+
+class _HiddenCaveats(RecommendationEngine):
+    """Engine adulterado: troca as ressalvas curtas pela ressalva geral, escondendo avisos."""
+
+    def recommend(self, campaign, **kwargs):
+        report = super().recommend(campaign, **kwargs)
+        recs = tuple(dataclasses.replace(r, caveats=(NO_CAVEAT,)) for r in report.recommendations)
+        return dataclasses.replace(report, recommendations=recs)
+
+
+def test_audit_flags_short_caveats_that_hide_warnings(engine, history):
+    tampered = _HiddenCaveats(
+        engine.predictor, load_performance_evidence(), load_score_differences()
+    )
+    failures = audit(tampered, history.loc[SAMPLE])["falhas"]
+    assert failures["ressalvas curtas iguais aos avisos"] > 0
+    assert failures.drop("ressalvas curtas iguais aos avisos").eq(0).all()
