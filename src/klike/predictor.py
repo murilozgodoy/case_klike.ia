@@ -44,7 +44,9 @@ from klike.modeling import (
 )
 from klike.support import HistoricalSupport
 
-FILE_FORMAT = 1  # muda quando a estrutura do arquivo salvo mudar
+# Muda quando a estrutura do arquivo salvo mudar. Formato 2: o suporte histórico guarda também
+# a música/voz em centésimos, para as janelas da recomendação de música.
+FILE_FORMAT = 2
 SCORE_RANGE = (0.0, 100.0)
 RETRAIN_HINT = "Gere o arquivo de novo com: python -m klike.train"
 
