@@ -31,12 +31,19 @@ A Parte 3, o recommendations engine, em cinco pontos:
 - **Mais música em relação à voz entra só para retenção.** Cada +0,1 de música se associa a 3,9% mais retenção, com evidência robusta, enquanto o score previsto cai meio ponto. A saída mostra as duas coisas e nunca apresenta a edição como melhora de score.
 - **As escolhas operacionais pouco mudam o resultado.** Entre 5 e 20 campanhas por lado, só a troca de formato no LinkedIn depende do mínimo, e a primeira recomendação é a mesma em seis ordens alternativas em 346 das 408 campanhas com duas ou mais.
 
+A Parte 4, a visão de produto, em três pontos:
+
+- **Do metadado ao vídeo, com validação.** O vídeo preencheria os atributos do criativo e permitiria recomendações localizadas no tempo, desde que a extração concorde com as marcações em que as evidências se apoiam.
+- **Produção reaproveitando o engine, não o modelo simulado.** O contrato, as regras, os testes e a auditoria vão para produção; os coeficientes estimados em 500 campanhas simuladas, não.
+- **Validar antes de sofisticar.** A primeira evolução é testar as recomendações em A/B com dados reais, porque associação não é efeito.
+
 | Parte | Pergunta do desafio | Onde está |
 | :-- | :-- | :-- |
 | 1.1 | Perfil dos dados, faltantes e outliers | [Seção](#parte-11--perfil-e-qualidade-dos-dados) e [notebook 01](notebooks/01_data_audit.ipynb) |
 | 1.2 a 1.4 | Atributos que importam, padrões por plataforma e visualizações | [Seção](#partes-12-a-14--o-que-acompanha-a-boa-performance-dos-criativos) e [notebook 02](notebooks/02_eda_insights.ipynb) |
 | 2 | Modelagem do Klike Score | [Seção](#parte-2--modelagem-do-klike-score) e [notebook 03](notebooks/03_modeling.ipynb) |
 | 3 | Recommendations engine | [Seção](#parte-3--recommendations-engine) e [notebook 04](notebooks/04_recommendations.ipynb) |
+| 4 | Visão de produto | [Seção](#parte-4--visão-de-produto) e [documento](docs/visao_de_produto.md) |
 
 ---
 
@@ -531,6 +538,18 @@ Rodar o engine em toda a base é uma avaliação funcional: mede cobertura, coer
 
 ---
 
+## Parte 4 · Visão de produto
+
+> Documento completo: [`docs/visao_de_produto.md`](docs/visao_de_produto.md)
+
+A proposta transforma o protótipo num ciclo de melhoria contínua dos criativos: compreender o vídeo, avaliar o criativo, recomendar melhorias, validar resultados e evoluir com as evidências. Cada proposta parte de uma limitação documentada nas Partes 1 a 3, e o documento separa o que existe no repositório, o que é proposta e o que depende de dados.
+
+- **Features do vídeo original.** Primeiro, extrair do vídeo os 8 atributos do criativo que o engine já usa; os 5 de contexto, como objetivo e público, continuam vindo do briefing. Antes de reaproveitar uma evidência, como o +51% de CTR associado ao hook, a extração precisa concordar com a marcação da base. Depois, medir *quando* e *como* as coisas acontecem no vídeo (a abertura, o tempo até o produto aparecer, o momento do CTA, a música sobre a fala), para recomendar edições localizadas no tempo. É também o caminho para sugerir algo aos criativos fortes: das 100 campanhas com maior score previsto, 97 recebem hoje menos de três recomendações.
+- **Produção.** Um serviço em Python que reaproveita o contrato, as regras, os testes e a auditoria do engine, com extração assíncrona do vídeo e resultados versionados. O gargalo é processar o vídeo, não prever o score. A Ridge, treinada em 500 campanhas simuladas, não vai para produção. Vídeos prontos podem ser comparados pela pontuação real da Klike, se houver acesso autorizado, mas estimar o score de uma edição ainda não feita exige um modelo validado com dados reais; as evidências também seriam reestimadas.
+- **Mais tempo.** Primeiro, testes A/B das recomendações sobre uma base real de criativos; depois, as features do vídeo, o diagnóstico pós-veiculação e os refinamentos estatísticos. O documento mostra a experiência futura ao lado da saída real da KLK-0024, e o diagnóstico do funil da KLK-0291, que tem score alto e conversão baixa depois do clique.
+
+---
+
 ## Limitações
 
 - **Associação, não causa.** Os efeitos da EDA e os do modelo são diferenças ajustadas por regressão pelo que foi medido; algo não observado, como a qualidade da oferta, pode andar junto com o atributo. Testes A/B confirmariam.
@@ -578,6 +597,8 @@ O notebook 01 pode levar até um minuto e meio, por causa do teste de permutaç�
 
 ```
 ├── data/raw/                     dataset original, nunca alterado
+├── docs/
+│   └── visao_de_produto.md       Parte 4: visão de produto
 ├── examples/                     campanha nova de exemplo, para a linha de comando
 ├── models/                       modelo treinado, gerado por python -m klike.train (fora do git)
 ├── notebooks/
