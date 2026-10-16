@@ -226,10 +226,7 @@ class Association:
     limitations: str
 
     def interval(self) -> str:
-        return (
-            f"{fmt_signed_pct(self.effect)} (de {fmt_signed_pct(self.low)} a "
-            f"{fmt_signed_pct(self.high)})"
-        )
+        return f"{_pct(self.effect)} (de {_pct(self.low)} a {_pct(self.high)})"
 
     def describe(self) -> str:
         sensitive = "" if self.stable else ", mas sensível à análise"
@@ -895,10 +892,15 @@ def _scenario_warning(campaign: dict, combination: int, minimum: int) -> str | N
     """Aviso forte quando a própria campanha está numa combinação com pouco histórico."""
     if combination >= minimum:
         return None
+    basis = (
+        "não foram observados nessa combinação"
+        if combination == 0
+        else "se apoiam em poucas campanhas dessa combinação"
+    )
     return (
         f"Extrapolação: a combinação {campaign['platform']} com vídeo {campaign['format']} "
-        f"{_history(combination)}. O score antes e depois e a associação geral "
-        "não foram observados nessa combinação: trate a recomendação com cautela redobrada."
+        f"{_history(combination)}. O score antes e depois e a associação geral {basis}: trate "
+        "a recomendação com cautela redobrada."
     )
 
 
@@ -944,6 +946,11 @@ def _points(value: float) -> str:
     return fmt_signed(value, 2 if 0 < abs(value) < 0.05 else 1)
 
 
+def _pct(value: float) -> str:
+    """Variação percentual com sinal; perto de zero, uma casa, para não parecer zero."""
+    return fmt_signed_pct(value, 1 if 0 < abs(value) < 0.005 else 0)
+
+
 def _history(n: int) -> str:
     """Quantas campanhas do histórico têm a combinação, numa frase completa."""
     if n == 0:
@@ -967,7 +974,7 @@ def _sensitivity(row: pd.Series) -> str | None:
     if count_level in EVIDENCE_PHRASES and count_level != row["evidencia"]:
         parts.append(
             "com binomial negativa, que mantém as campanhas sem conversão, a associação é de "
-            f"{fmt_signed_pct(row['efeito_binomial_negativa'])}, {EVIDENCE_PHRASES[count_level]}"
+            f"{_pct(row['efeito_binomial_negativa'])}, {EVIDENCE_PHRASES[count_level]}"
         )
     return "; ".join(parts) or None
 

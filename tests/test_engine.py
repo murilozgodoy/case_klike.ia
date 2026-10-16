@@ -5,6 +5,7 @@ a ordem das recomendações e os casos difíceis: dados ausentes, combinações 
 ganho limítrofe, pouca base e conflito entre score e performance.
 """
 
+import itertools
 import json
 
 import numpy as np
@@ -131,6 +132,15 @@ def test_each_edit_changes_only_its_own_field():
         }
         edited = action.apply(campaign)
         assert {k for k in campaign if campaign[k] != edited[k]} == {action.field}
+
+
+def test_catalog_never_offers_two_edits_of_the_same_field():
+    # Edições do mesmo campo partem de valores diferentes ou valem em plataformas diferentes,
+    # então nunca se aplicam juntas: não há edição repetida nem incompatível.
+    for a, b in itertools.combinations(ACTIONS, 2):
+        if a.field == b.field:
+            other_platform = a.platform and b.platform and a.platform != b.platform
+            assert a.current != b.current or other_platform, (a.key, b.key)
 
 
 def test_scores_come_from_the_public_predictor_for_each_scenario(engine, predictor):
@@ -359,6 +369,15 @@ def test_command_line_rejects_unknown_or_invalid_campaigns(capsys, tmp_path):
     assert "platform: valor desconhecido" in capsys.readouterr().err
 
 
+def test_command_line_prints_the_same_report_as_the_api(engine, history, capsys):
+    report = engine.recommend(history.loc[["KLK-0024"]])
+    main(["--campanha", "KLK-0024", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == json.loads(json.dumps(report.to_dict(), ensure_ascii=False))
+    main(["--campanha", "KLK-0024"])
+    assert capsys.readouterr().out == report.to_text() + "\n"
+
+
 def test_example_file_demonstrates_at_least_three_recommendations(capsys):
     report = main(["--arquivo", "examples/campanha_nova.json"])
     assert len(report.recommendations) >= 3
@@ -385,6 +404,15 @@ def test_explanations_describe_general_adjusted_associations(engine, history):
     assert "não uma estimativa do efeito" in hook.to_dict()["suporte"]["observacao"]
 
 
+def test_estimates_near_zero_keep_their_sign(engine):
+    # −0,1% e +0,2% não podem virar "0%", ainda mais num aviso de sinal desfavorável.
+    text = engine.recommend(COMPLETE | {"objective": "engagement", "text_density": "low"})
+    warning = next(w for w in by_action(text, "texto_baixo_medio").warnings if "desfavor" in w)
+    assert warning.endswith("sinal desfavorável: −0,1% (de −18% a +21%).")
+    face = engine.recommend(COMPLETE | {"objective": "awareness", "has_face": False})
+    assert "retenção +11% (de +0,2% a +23%), só indício" in by_action(face, "rosto").rationale
+
+
 def test_score_opportunities_speak_of_the_objective_metric(engine, history):
     report = engine.recommend(history.loc[["KLK-0024"]])
     fmt = by_action(report, "formato_meta_horizontal")  # C em conversões, A em engajamento
@@ -406,6 +434,7 @@ def test_unobserved_combination_keeps_only_evidence_based_edits(engine):
     assert actions(report) == ["hook", "texto_alto_medio"]
     for r in report.recommendations:
         assert r.warnings[0].startswith("Extrapolação: a combinação TikTok com vídeo horizontal")
+        assert "não foram observados nessa combinação" in r.warnings[0]
     reasons = dict(report.not_recommended)
     assert set(reasons) == {"cta", "legenda"}
     assert all("combinação sem histórico" in reason for reason in reasons.values())
@@ -428,7 +457,10 @@ def test_rare_combination_warns_without_dropping_score_opportunities(predictor):
     report = engine.recommend(linkedin)
     cta = by_action(report, "cta")
     assert cta.recommendation_class == "C"
-    assert cta.warnings[0].startswith("Extrapolação")
+    assert cta.warnings[0].startswith(
+        "Extrapolação: a combinação LinkedIn com vídeo vertical tem 11"
+    )
+    assert "se apoiam em poucas campanhas dessa combinação" in cta.warnings[0]
 
 
 def test_roas_is_rejected_for_branding(engine, tmp_path):
