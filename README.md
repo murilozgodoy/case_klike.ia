@@ -23,6 +23,13 @@ A Parte 2, de modelagem, em cinco pontos:
 - **Nesta base simulada, a performance realizada explica só parte do score.** Um modelo comparativo que acrescenta CTR, conversão e outras taxas, conhecidas só depois do gasto, erra cerca de 1 ponto a menos. Mesmo nele, o criativo pesa mais que as taxas.
 - **O modelo está pronto para uso.** Um comando recria o modelo final, e uma única chamada valida uma campanha nova e devolve o score previsto. O arquivo também guarda quantas campanhas parecidas existem para cada combinação de atributos, para a Parte 3 não extrapolar.
 
+A Parte 3, o recommendations engine, em quatro pontos:
+
+- **O engine sugere edições do vídeo com a força da evidência à vista.** Cada recomendação separa o score previsto, a associação com a métrica do objetivo, a classe de evidência e quanta base existe para comparar. A ordem segue a evidência na métrica do objetivo, não só o score.
+- **Três ou mais recomendações para 47% das campanhas, e nenhuma para 5%.** Quem recebe menos já segue a maior parte do catálogo, e o engine diz isso em vez de completar a lista. 77% das campanhas recebem ao menos uma recomendação com evidência na métrica do objetivo.
+- **Mais da metade das recomendações é só oportunidade de score.** Legenda, CTA e texto baixo → médio sobem o score previsto sem evidência de performance; a saída as apresenta como hipóteses para teste A/B.
+- **As escolhas operacionais pouco mudam o resultado.** Entre 5 e 20 campanhas por lado, só a troca de formato no LinkedIn depende do mínimo, e a primeira recomendação é a mesma em seis ordens alternativas em 346 das 400 campanhas com duas ou mais.
+
 | Parte | Pergunta do desafio | Onde está |
 | :-- | :-- | :-- |
 | 1.1 | Perfil dos dados, faltantes e outliers | [Seção](#parte-11--perfil-e-qualidade-dos-dados) e [notebook 01](notebooks/01_data_audit.ipynb) |
@@ -371,7 +378,7 @@ As 13 features não precisam coincidir: quando há poucas campanhas parecidas, o
 
 > Notebook completo: [`notebooks/04_recommendations.ipynb`](notebooks/04_recommendations.ipynb)
 
-O engine recebe uma campanha e sugere edições no vídeo, ordenadas por prioridade. Esta seção registra o desenho, as evidências que ele usa e como ele funciona; a avaliação nas 500 campanhas entra aqui quando for concluída.
+**O problema:** antes de veicular, o time quer saber o que mudar num criativo. O engine recebe uma campanha, com os 13 atributos de pré-publicação, e devolve as edições do vídeo que a base sustenta, em ordem de prioridade. Cada edição vem com quanto o modelo prevê de score, o que o histórico mostra na métrica do objetivo da campanha, a força dessa evidência e quanta base existe para comparar. Nada disso é efeito causal: toda recomendação é uma hipótese para teste A/B.
 
 ### Três camadas que não se misturam
 
@@ -413,34 +420,24 @@ O enunciado sugere, como exemplo, reduzir a duração no TikTok. Nesta base, dob
 
 - **Só edições aplicáveis.** O engine sugere apenas edições do catálogo que mudam algo que a campanha tem hoje. Um valor ausente nunca conta como ausência: legenda sem marcação não vira "sem legenda". Plataforma, categoria, objetivo, público e retargeting nunca mudam, e formatos sem histórico na plataforma, como horizontal no TikTok, nunca são sugeridos.
 - **Contexto sem personalização artificial.** As edições aplicáveis dependem do que a campanha já tem, o formato é estimado dentro de cada plataforma, e o objetivo define a métrica. Os efeitos de hook, rosto e texto são gerais: a variância entre plataformas estimada é zero em 9 das 12 combinações testadas, então estimativas encolhidas por plataforma devolveriam o próprio efeito geral.
-- **Métrica pelo objetivo:**
-  - traffic, CTR;
-  - engagement, engajamento;
-  - awareness, retenção, como proxy de atenção;
-  - conversions e app_install, conversões por mil impressões.
-- **Três classes:**
+- **Métrica pelo objetivo:** CTR em traffic, engajamento em engagement, retenção em awareness, como proxy de atenção, e conversões por mil impressões em conversions e app_install. A métrica pode ser trocada por parâmetro; pedir ROAS para Branding, que não registra receita, gera um erro com mensagem clara.
+- **Combinação sem histórico:** se a própria campanha está numa combinação de plataforma e formato sem nenhuma campanha na base, como vídeo horizontal no TikTok, ficam só as recomendações A e B, com aviso de extrapolação. As oportunidades só de score saem, porque o ganho delas viria só de uma previsão fora do histórico.
+
+### Quantificação e prioridade
+
+- **Score da campanha concreta:** o score antes e depois de cada edição vem do preditor da Parte 2, dentro da escala de 0 a 100. A tabela de diferenças, com seus intervalos, é evidência complementar.
+- **Três classes, pela associação com a métrica do objetivo:**
   - **A:** associação robusta e estável;
   - **B:** indício, ou robusta mas sensível;
   - **C:** ganho de score sem evidência suficiente na métrica do objetivo, apresentado como hipótese para teste. A saída não nega associações em outras métricas: o formato vertical na Meta, por exemplo, é C numa campanha de conversões e cita o engajamento +63%.
 - **Prioridade:** primeiro a classe; dentro de A e de B, a associação com a métrica do objetivo; dentro de C, o limite inferior do intervalo do score, para respeitar a incerteza. Prioridade não é impacto: uma recomendação B pode ter impacto estimado maior que uma A e ficar atrás, e a saída explica por quê.
 - **Conflitos à vista.** Quando o score sobe, mas a associação com a métrica do objetivo é inconclusiva ou tem sinal desfavorável, a recomendação fica em C, com aviso. Uma associação desfavorável com p < 0,05 exclui a edição.
+- **Suporte histórico:** campanhas com o valor atual e com o sugerido, do recorte mais específico ao mais amplo, com pelo menos 10 de cada lado. Ele descreve a base de comparação, não estima o efeito no recorte; suporte baixo vira aviso e não muda a classe.
 - **Mínimo de três:** o engine lista todas as recomendações defensáveis e diz quando elas são menos de três, sem completar a lista.
-- **Suporte histórico:** campanhas com o valor atual e com o sugerido, do recorte mais específico ao mais amplo, com pelo menos 10 de cada lado. Suporte baixo vira aviso de extrapolação e não muda a classe de evidência.
-- **Score da campanha concreta:** o score antes e depois de cada edição vem do preditor, dentro da escala de 0 a 100. A tabela de diferenças, com seus intervalos, é evidência complementar.
-- **Combinação sem histórico:** se a própria campanha está numa combinação de plataforma e formato sem nenhuma campanha na base, como vídeo horizontal no TikTok, ficam só as recomendações A e B, cada uma com aviso de extrapolação. As oportunidades só de score saem, porque o ganho delas viria só de uma previsão fora do histórico. Nenhuma das 500 campanhas da base está nessa situação.
-- **Métrica incompatível é rejeitada:** pedir ROAS para uma campanha de Branding, que não registra receita, gera um erro com mensagem clara.
-- **Explicações precisas:** as associações aparecem como gerais, ajustadas pelo contexto, e não como efeitos medidos só em campanhas como aquela. O suporte histórico contextual aparece como base de comparação, não como estimativa do recorte. Toda saída termina com essa nota de leitura.
 
-As duas tabelas de evidências ficam em `reports/`, com estimativa, intervalo, tamanho de cada lado, classe, sensibilidades e limitações de cada linha.
+As associações aparecem como gerais, ajustadas pelo contexto, e não como efeitos medidos só em campanhas como aquela; toda saída termina com essa nota de leitura. As duas tabelas de evidências ficam em `reports/`, com estimativa, intervalo, tamanho de cada lado, classe, sensibilidades e limitações de cada linha.
 
-### Como usar o engine
-
-Pela linha de comando, com uma campanha do histórico ou um JSON com os 13 atributos de pré-publicação:
-
-```bash
-python -m klike.recommend --campanha KLK-0024
-python -m klike.recommend --arquivo examples/campanha_nova.json --json
-```
+### Exemplos
 
 Trecho da saída para a KLK-0024, uma campanha de conversões na Meta:
 
@@ -458,6 +455,25 @@ Trecho da saída para a KLK-0024, uma campanha de conversões na Meta:
    Prioridade: Tem impacto estimado maior que mostrar um rosto humano, mas fica depois porque a evidência é de classe B: melhoria com evidência fraca ou sensível.
 ```
 
+Outros casos da base:
+
+| Campanha | Recomendações, em ordem | Como ler |
+| :-- | :-- | :-- |
+| KLK-0203 · Meta, awareness | Hook (A), texto alto → médio (A), rosto (B), legenda (C) | Três edições com evidência na retenção. O rosto é só indício na retenção, embora seja robusto nas outras métricas; a legenda é uma hipótese para teste. |
+| KLK-0030 · Meta, engagement, vídeo horizontal | Vertical (A), rosto (A), hook (A) | O vertical vem primeiro: na Meta, ele se associa a +63% de engajamento. |
+| KLK-0191 · Meta, traffic, vídeo horizontal | Vertical (C) | A mesma troca, numa campanha de traffic, é só oportunidade de score, com aviso de estimativa desfavorável no CTR, inconclusiva. |
+| KLK-0013 · TikTok, engagement, vídeo quadrado | CTA (C), texto baixo → médio (C), vertical (C) | Três recomendações, nenhuma com evidência no engajamento: hipóteses para testar, não melhorias comprovadas. |
+| KLK-0044 · LinkedIn, awareness | Nenhuma | O criativo já segue o catálogo, e a legenda está sem marcação. O engine diz isso, sem completar a lista. |
+
+### Como usar o engine
+
+Pela linha de comando, com uma campanha do histórico ou um JSON com os 13 atributos de pré-publicação:
+
+```bash
+python -m klike.recommend --campanha KLK-0024
+python -m klike.recommend --arquivo examples/campanha_nova.json --json
+```
+
 Em Python, `recommend(campanha)` devolve o mesmo relatório, com `to_frame()` para notebooks, `to_text()` para leitura e `to_dict()` para integração. Cada recomendação traz, separados:
 - a prioridade e o impacto estimado;
 - os valores atual e sugerido;
@@ -466,7 +482,25 @@ Em Python, `recommend(campanha)` devolve o mesmo relatório, com `to_frame()` pa
 - o suporte dos dois lados da comparação e o recorte usado;
 - a justificativa, os avisos e o próximo passo de validação.
 
-Campanhas que já seguem as práticas com evidência recebem menos sugestões, e a saída diz isso: um criativo completo, como a KLK-0003, não recebe nenhuma, em vez de uma lista preenchida sem base.
+### Avaliação nas 500 campanhas
+
+Rodar o engine em toda a base é uma avaliação funcional: mede cobertura, coerência e quanto a ordem depende dos critérios. Não valida o impacto: as evidências e o modelo vieram dessas mesmas campanhas, e só um teste A/B mede o efeito de uma edição. As 1.219 recomendações ficam em `reports/engine_recommendations.csv`.
+
+![Avaliação do engine nas 500 campanhas](reports/figures/04_avaliacao_engine.png)
+
+- **Cobertura:** 237 campanhas (47%) recebem três ou mais recomendações, 163 duas, 77 uma e 23 nenhuma. Quem recebe menos de três já segue a maior parte do catálogo: as 23 sem recomendação têm hook, rosto, CTA e texto médio. Com o mínimo padrão, nenhuma edição aplicável é rejeitada; o limite é o catálogo, não as regras.
+- **Evidência:** 384 campanhas (77%) recebem ao menos uma recomendação com evidência na métrica do objetivo, sempre em primeiro. Mais da metade das recomendações (53%) é só oportunidade de score, como legenda, CTA e texto baixo → médio, e a saída diz isso em cada uma. Das 237 campanhas com três ou mais, 14 recebem só oportunidades de score.
+- **Score e performance nem sempre andam juntos.** Em 79 recomendações C, a estimativa na métrica do objetivo é desfavorável, mas inconclusiva, e a saída avisa. O ganho de score de cada edição é o mesmo em todas as campanhas, porque o modelo é aditivo: do hook (+17,0) à troca de quadrado por vertical no TikTok (+3,3, com intervalo a partir de +0,01).
+- **Suporte mínimo:** entre 5 e 20 campanhas por lado, a lista e a ordem quase não mudam. Com 20, só sai a troca de vertical por horizontal no LinkedIn, que tem 11 vídeos verticais. O que muda é o recorte do suporte: o risco moderado vai de 8% das recomendações, com 5, a 29%, com 10, e 61%, com 20. O padrão continua 10.
+- **Robustez da ordem:** em seis ordens alternativas, como só impacto, só score ou critério conservador, a primeira recomendação é a mesma em 346 das 400 campanhas com duas ou mais. A divergência mais comum é com o score: em 38 campanhas, ordenar só pelo score poria na frente uma edição com associação menor com a métrica do objetivo.
+- **Coerência:** 14 verificações de ponta a ponta passam nas 500 campanhas e em campanhas novas. JSON, tabela e texto concordam; nada do contexto é editado e nenhum campo é editado duas vezes; os scores ficam entre 0 e 100; a saída é determinística e não depende das métricas observadas.
+
+### Limitações e evoluções
+
+- **O catálogo é pequeno.** São 10 edições, e só 4 têm evidência de performance em algum objetivo. Novos atributos do criativo, se a base os medir, ampliariam a cobertura.
+- **Os efeitos são gerais e cada edição é avaliada sozinha.** O engine não estima efeitos por segmento nem soma edições combinadas. Com mais campanhas, e com resultados de testes, dá para estimar efeitos por plataforma e combinações de edições.
+- **A avaliação é na própria base.** Ela descreve o comportamento do engine; não valida as recomendações. A evolução natural é testar em A/B, começando pelas recomendações A mais frequentes, hook e rosto humano, e usar os resultados para recalibrar classes e prioridades.
+- **As combinações raras têm pouca base.** Mais vídeos verticais no LinkedIn e quadrados no TikTok reduziriam os avisos de extrapolação nessas trocas de formato.
 
 ---
 
@@ -509,7 +543,7 @@ Para reexecutar os notebooks do zero e regenerar as figuras:
 jupyter nbconvert --to notebook --execute --inplace notebooks/01_data_audit.ipynb notebooks/02_eda_insights.ipynb notebooks/03_modeling.ipynb notebooks/04_recommendations.ipynb
 ```
 
-O notebook 01 pode levar até um minuto e meio, por causa do teste de permutação dos faltantes; o 03, cerca de três minutos, por causa da validação cruzada aninhada; e o 04, cerca de meio minuto, por causa do bootstrap das diferenças de score. O 01 e o 04 também regravam as tabelas em `reports/`.
+O notebook 01 pode levar até um minuto e meio, por causa do teste de permutação dos faltantes; o 03, cerca de três minutos, por causa da validação cruzada aninhada; e o 04, cerca de um minuto e meio, por causa do bootstrap das diferenças de score e das rodadas do engine nas 500 campanhas. O 01 e o 04 também regravam as tabelas em `reports/`.
 
 ## Estrutura do repositório
 
@@ -526,6 +560,7 @@ O notebook 01 pode levar até um minuto e meio, por causa do teste de permutaç�
 │   ├── data_corrections.csv      log de auditoria: cada correção, sua base e evidência
 │   ├── recommendation_evidence.csv  associação de cada edição com a performance, com classe
 │   ├── score_differences.csv     diferença de score prevista de cada edição, com intervalo
+│   ├── engine_recommendations.csv  as recomendações do engine para as 500 campanhas
 │   └── figures/                  gráficos exportados
 ├── src/klike/                    código reutilizável, importado pelos notebooks
 │   ├── config.py                 caminhos, grupos de colunas e constantes
@@ -535,6 +570,7 @@ O notebook 01 pode levar até um minuto e meio, por causa do teste de permutaç�
 │   ├── evidence.py               evidências do engine: contrastes, correção e sensibilidades
 │   ├── engine.py                 recommendations engine: elegibilidade, classes, ordem e textos
 │   ├── recommend.py              comando python -m klike.recommend
+│   ├── engine_evaluation.py      avaliação do engine: tabelas, ordens alternativas e auditoria
 │   ├── predictor.py              modelo final: treino, arquivo salvo e previsão
 │   ├── support.py                suporte histórico: campanhas parecidas por recorte
 │   ├── train.py                  comando python -m klike.train
@@ -543,4 +579,4 @@ O notebook 01 pode levar até um minuto e meio, por causa do teste de permutaç�
 └── tests/                        testes automatizados (pytest)
 ```
 
-A lógica fica em `src/klike` e os notebooks só a importam. Assim, a mesma limpeza roda nos notebooks, nos testes e, mais adiante, no recommendations engine.
+A lógica fica em `src/klike` e os notebooks só a importam. Assim, a mesma limpeza roda nos notebooks, nos testes e no recommendations engine.
