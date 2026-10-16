@@ -7,6 +7,9 @@ DATA_DIR = ROOT_DIR / "data"
 RAW_DATA_PATH = DATA_DIR / "raw" / "klike_challenge_dataset.csv"
 REPORTS_DIR = ROOT_DIR / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
+# Modelo treinado: gerado por `python -m klike.train`, fora do controle de versão.
+MODELS_DIR = ROOT_DIR / "models"
+MODEL_PATH = MODELS_DIR / "klike_score_model.joblib"
 
 ID_COL = "campaign_id"
 DATE_COL = "date"
@@ -46,6 +49,9 @@ PERFORMANCE_COLS = [
 ]
 
 BOOL_COLS = ["is_retargeting", "has_subtitle", "has_cta", "has_hook", "has_face"]
+
+# Marcações que a limpeza acrescenta (data.clean): não são erro, mudam a forma de analisar.
+FLAG_COLS = ["flag_ctr_at_cap", "flag_engagement_at_cap", "flag_full_watch", "flag_roas_applicable"]
 
 # Ordem fixa das categorias: mantém tabelas e gráficos consistentes entre notebooks.
 CATEGORY_ORDERS = {

@@ -227,6 +227,26 @@ def test_booleans_accept_zero_and_one():
     pd.testing.assert_frame_equal(prepare_features(as_numbers), prepare_features(NEW_CAMPAIGN))
 
 
+def test_strict_preparation_rejects_unknown_fields_but_accepts_historical_columns():
+    historical = {
+        **NEW_CAMPAIGN,
+        "ctr": 0.02,
+        TARGET: 70.0,
+        ID_COL: "KLK-9999",
+        DATE_COL: "2026-01-01",
+        "flag_ctr_at_cap": False,
+    }
+    expected = prepare_features(NEW_CAMPAIGN)
+    pd.testing.assert_frame_equal(prepare_features(historical, strict=True), expected)
+    # Um campo opcional digitado errado viraria valor ausente em silêncio.
+    typo = {k: v for k, v in NEW_CAMPAIGN.items() if k != "music_voice_ratio"}
+    typo["music_ratio"] = 0.4
+    with pytest.raises(ValueError, match=r"campos desconhecidos \['music_ratio'\]"):
+        prepare_features(typo, strict=True)
+    # Fora do modo estrito, como no preparo do histórico, colunas extras são ignoradas.
+    assert pd.isna(prepare_features(typo).loc[0, "music_voice_ratio"])
+
+
 # --------------------------------------------------------------------------- #
 # Divisão e partições
 # --------------------------------------------------------------------------- #

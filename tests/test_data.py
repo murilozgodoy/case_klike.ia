@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from klike.config import RAW_DATA_PATH
+from klike.config import FLAG_COLS, RAW_DATA_PATH
 from klike.data import IDENTITY, PLAUSIBILITY, TOL_IMPRESSIONS_REL, clean, load_raw
 
 
@@ -165,6 +165,12 @@ def test_flags_are_missing_when_source_value_is_missing():
     assert flags.loc["CAP", "flag_full_watch"]
     assert pd.isna(flags.loc["GAP", "flag_engagement_at_cap"])
     assert pd.isna(flags.loc["GAP", "flag_full_watch"])
+
+
+def test_clean_adds_exactly_the_declared_flags():
+    # O modelo aceita essas colunas junto de uma campanha e as ignora (HISTORICAL_FIELDS).
+    data = clean(pd.DataFrame([_campaign()])).data
+    assert [col for col in data.columns if col.startswith("flag_")] == FLAG_COLS
 
 
 def test_clean_does_not_mutate_its_input():

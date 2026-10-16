@@ -41,7 +41,16 @@ from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, OrdinalEnc
 from sklearn.utils.validation import check_is_fitted
 
 from klike.analysis import add_rate_metrics
-from klike.config import CATEGORY_ORDERS, CONTEXT_COLS, CREATIVE_COLS, ID_COL
+from klike.config import (
+    CATEGORY_ORDERS,
+    CONTEXT_COLS,
+    CREATIVE_COLS,
+    DATE_COL,
+    FLAG_COLS,
+    ID_COL,
+    PERFORMANCE_COLS,
+    TARGET,
+)
 
 RANDOM_STATE = 42
 TEST_SIZE = 0.2  # 400 campanhas de desenvolvimento e 100 de teste final
@@ -56,6 +65,9 @@ INNER_FOLDS = 3  # ajuste de hiperparâmetros dentro do treino de cada partiçã
 PRE_FLIGHT_INPUTS = CONTEXT_COLS + CREATIVE_COLS
 # Podem faltar, como no histórico. As demais são obrigatórias.
 OPTIONAL_INPUTS = ["video_duration_s", "has_subtitle", "music_voice_ratio"]
+# Colunas do histórico que podem acompanhar uma campanha e que o modelo ignora:
+# identificação, data, o próprio score, métricas de performance e marcações da limpeza.
+HISTORICAL_FIELDS = [ID_COL, DATE_COL, TARGET, *PERFORMANCE_COLS, *FLAG_COLS]
 
 # Colunas que o modelo A recebe depois da preparação, em ordem fixa.
 CATEGORICAL_FEATURES = [
@@ -108,6 +120,10 @@ BASE_SPEC = FeatureSpec()
 # o M1, e só a interação plataforma × formato (F3) melhorou o modelo de forma consistente.
 SELECTED_MODEL = "ridge"
 SELECTED_SPEC = FeatureSpec(platform_format=True)
+# Penalização da Ridge na certificação (notebook 03, seção 7), escolhida pela validação
+# interna nas 400 campanhas de desenvolvimento. O modelo final reutiliza o valor, sem nova
+# busca, para não reabrir a seleção de hiperparâmetros.
+SELECTED_PARAMS = {"alpha": 1.0}
 
 # Espaços de hiperparâmetros, pequenos de propósito (ver o protocolo no notebook 03).
 PARAM_GRIDS = {
@@ -129,16 +145,22 @@ MIN_INTERACTION_SUPPORT = 10
 # --------------------------------------------------------------------------- #
 # Preparação e validação
 # --------------------------------------------------------------------------- #
-def prepare_features(campaigns: pd.DataFrame | Mapping | Sequence[Mapping]) -> pd.DataFrame:
+def prepare_features(
+    campaigns: pd.DataFrame | Mapping | Sequence[Mapping], *, strict: bool = False
+) -> pd.DataFrame:
     """Converte campanhas no formato do modelo A, validando cada campo.
 
     Aceita um dicionário (uma campanha), uma lista de dicionários ou um DataFrame. Usa
     só as 13 colunas de pré-publicação: colunas extras, como métricas de performance,
     são ignoradas. Não depende da limpeza do histórico, que exige métricas que uma
     campanha nova ainda não tem. Entradas inválidas geram um erro que lista os problemas.
+
+    Com ``strict=True``, usado na previsão de campanhas novas, só são aceitas as colunas de
+    pré-publicação e as do histórico (``HISTORICAL_FIELDS``). Assim, um campo opcional com
+    o nome digitado errado gera erro, em vez de virar um valor ausente em silêncio.
     """
     frame = _as_frame(campaigns)
-    _validate(frame)
+    _validate(frame, strict=strict)
     out = pd.DataFrame(index=frame.index)
     for col in CATEGORICAL_FEATURES:
         if col == "subtitle_status":
@@ -213,9 +235,16 @@ def _number(value) -> float | None:
     return number if np.isfinite(number) else None
 
 
-def _validate(frame: pd.DataFrame) -> None:
+def _validate(frame: pd.DataFrame, *, strict: bool = False) -> None:
     """Junta todos os problemas da entrada numa única mensagem de erro."""
     problems: list[str] = []
+    if strict:
+        accepted = {*PRE_FLIGHT_INPUTS, *HISTORICAL_FIELDS}
+        unknown = [str(col) for col in frame.columns if col not in accepted]
+        if unknown:
+            problems.append(
+                f"campos desconhecidos {unknown} (o modelo usa {', '.join(PRE_FLIGHT_INPUTS)})"
+            )
     required = [col for col in PRE_FLIGHT_INPUTS if col not in OPTIONAL_INPUTS]
     absent = [col for col in required if col not in frame.columns]
     if absent:
