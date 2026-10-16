@@ -15,6 +15,13 @@ A Parte 1, de análise exploratória, em seis pontos:
 - **Duração não mostra efeito detectável** em nenhuma plataforma.
 - **O Klike Score responde mais ao criativo que ao público,** mas dá pontos a legenda, CTA e texto médio, que não mostram efeito robusto em performance. Vale validar esses pesos.
 
+A Parte 2, de modelagem, em quatro pontos:
+
+- **Dá para prever o score antes de gastar.** Um modelo linear (Ridge) com o contexto da campanha e os atributos do criativo erra 6,4 pontos em média nas 100 campanhas reservadas para o teste final, numa escala de 0 a 100. É 45% menos que prever a média, compatível com a validação cruzada.
+- **O modelo separa bem criativos bons de fracos, mas não crava números.** Quando ele prevê 10 pontos ou mais de diferença entre dois criativos da mesma plataforma, o apontado como melhor tem de fato o score maior em 93% dos pares do desenvolvimento, numa análise exploratória. Abaixo de 5 pontos previstos, a comparação é pouco melhor que um chute. Nos extremos, as previsões são puxadas para o centro, e no LinkedIn o erro tende a ser maior.
+- **Ele aprendeu o que a EDA mostrou.** Hook, rosto e densidade de texto são o que mais pesa na previsão, com efeitos em pontos próximos aos da Parte 1. Isso mostra o que ajuda a prever, não o que causa o score.
+- **Nesta base simulada, a performance realizada explica só parte do score.** Um modelo comparativo que acrescenta CTR, conversão e outras taxas, conhecidas só depois do gasto, erra cerca de 1 ponto a menos. Mesmo nele, o criativo pesa mais que as taxas.
+
 | Parte | Pergunta do desafio | Onde está |
 | :-- | :-- | :-- |
 | 1.1 | Perfil dos dados, faltantes e outliers | [Seção](#parte-11--perfil-e-qualidade-dos-dados) e [notebook 01](notebooks/01_data_audit.ipynb) |
@@ -188,7 +195,7 @@ Os seis gráficos das Partes 1.2 e 1.3 foram feitos para um time de marketing. C
 
 > Notebook completo: [`notebooks/03_modeling.ipynb`](notebooks/03_modeling.ipynb)
 
-A modelagem segue um protocolo definido antes dos experimentos formais. Esta seção registra as decisões e os resultados até a escolha do modelo; a certificação no teste e a interpretação entram aqui quando forem concluídas.
+A modelagem segue um protocolo definido antes dos experimentos formais. Esta seção resume as decisões, a certificação no teste e a interpretação do modelo; o notebook traz os detalhes. O modelo salvo e a interface de previsão entram aqui quando forem concluídos.
 
 ### Dois cenários, um principal
 
@@ -241,18 +248,75 @@ A Ridge erra, em média, 7 pontos numa escala de 0 a 100: 45% menos que o piso, 
 
 O F3 ficou abaixo da referência de 0,5 ponto do protocolo, então a decisão pesou os outros critérios: a melhora é muito estável, custa só três termos, mantém o modelo linear e deixa o efeito do formato específico de cada plataforma. Sem a interação, o modelo aplicaria o mesmo efeito de formato a todas as plataformas, embora o vídeo horizontal tenha score menor na Meta e seja o formato mais usado no LinkedIn. Combinações sem campanhas suficientes no treino, como TikTok horizontal, não ganham efeito próprio.
 
-**Modelo escolhido:** Ridge com as 13 features de pré-publicação e a interação plataforma × formato. Nas partições do desenvolvimento, ele erra 6,78 pontos em média, mas essas são as mesmas partições que orientaram a escolha, então o número pode trazer algum otimismo de seleção. A estimativa que vale é a da certificação nas 100 campanhas reservadas, que até aqui não foram consultadas.
+**Modelo escolhido:** Ridge com as 13 features de pré-publicação e a interação plataforma × formato. Nas partições do desenvolvimento, ele erra 6,78 pontos em média, mas essas são as mesmas partições que orientaram a escolha, então o número pode trazer algum otimismo de seleção. A estimativa que vale é a da certificação, a seguir.
+
+### Certificação no teste
+
+Com a especificação registrada no código, o modelo foi treinado nas 400 campanhas de desenvolvimento e avaliado uma única vez nas 100 reservadas. Os intervalos de 95% vêm de bootstrap das campanhas do teste, com o modelo treinado fixo: medem a incerteza de avaliar em 100 campanhas, não a de um novo treinamento.
+
+| | Modelo escolhido, no teste | Dummy, no teste | Validação cruzada |
+| :-- | :-- | :-- | :-- |
+| MAE (pontos) | 6,43 (5,55 a 7,33) | 11,67 (10,09 a 13,39) | 6,78 ± 0,48 |
+| RMSE (pontos) | 7,92 (6,86 a 8,96) | 14,37 (12,58 a 16,11) | 8,50 ± 0,67 |
+| R² | 0,70 (0,57 a 0,78) | 0,00 (−0,06 a 0,00) | 0,71 ± 0,04 |
+| Spearman | 0,83 (0,74 a 0,88) | não se aplica | 0,83 ± 0,02 |
+
+O desempenho no teste é compatível com a validação cruzada: o intervalo do MAE inclui os 6,78 esperados, e R² e Spearman ficam onde a validação indicava. Contra o Dummy, o erro cai 5,24 pontos, com intervalo de 3,59 a 6,95. Em 45% das campanhas, o erro fica abaixo de 5 pontos, e em 79%, abaixo de 10. O MAE do teste ficou um pouco abaixo do esperado, dentro da variação de uma amostra de 100 campanhas. Isso reduz, mas não elimina, o risco de otimismo de seleção, porque a exploração inicial teve contato com as 500 campanhas. O teste também não separa diferenças de menos de cerca de 1 ponto. O resultado não mudou nenhuma escolha.
+
+![Avaliação do modelo](reports/figures/03_avaliacao.png)
+
+### Onde o modelo erra
+
+Os diagnósticos usam as previsões fora da amostra das 400 campanhas de desenvolvimento, quatro vezes mais que o teste:
+
+- **Calibração.** Em todas as faixas de score previsto, o erro médio fica entre −1,4 e +1,1 ponto, com intervalos que incluem o zero.
+- **Extremos.** Os 10% com maior score real, 85 em média, são previstos em 79; os 10% com menor, 31, em 39. É regressão à média, esperada em qualquer modelo que não explica toda a variação: o modelo separa criativos bons de fracos melhor do que crava o score de um criativo excepcional.
+- **Segmentos.** O LinkedIn tem o maior erro, 8,0 ± 1,4 pontos, contra 6,3 ± 0,7 na Meta, com só 66 campanhas. No teste, que tem 17 campanhas do LinkedIn, a ordem se inverteu, dentro da incerteza de um grupo tão pequeno. Entre categorias, as margens se sobrepõem. Não encontramos evidência clara de viés médio sistemático nos segmentos avaliados: os erros médios ficam perto de zero, o que não prova que o viés seja nulo. As margens são aproximações normais, grosseiras em grupos pequenos.
+- **Ordenação, pela diferença real.** Em pares da mesma plataforma com diferença real de 10 pontos ou mais, o modelo aponta o melhor criativo em 92% das vezes no desenvolvimento e em 94% no teste. Abaixo de 5 pontos, acerta 58%, pouco acima de um chute. É um diagnóstico retrospectivo, porque a diferença real só existe depois da veiculação.
+- **Ordenação, pela diferença prevista.** É a informação que o produto tem antes de veicular. Quando a diferença prevista é de 10 pontos ou mais, o criativo apontado teve de fato o maior score em 93% dos pares do desenvolvimento; com 5 pontos ou mais, em 88%; abaixo de 5, em 58%. A análise é exploratória: os pares compartilham campanhas, e previsões de partições diferentes vêm de modelos diferentes, embora a conta só com pares da mesma partição dê quase o mesmo resultado. Nenhum limiar foi escolhido, e o teste não foi usado para isso.
+- **Tempo.** Treinado nos três primeiros trimestres, o modelo erra 6,5 pontos no quarto, sem sinal de piora.
+
+### O que o modelo aprendeu
+
+![Importância das variáveis](reports/figures/03_importancia.png)
+
+| Atributo | Modelo (pontos) | EDA (pontos) |
+| :-- | :-- | :-- |
+| Hook nos 3 primeiros segundos | +17,4 | +17,1 |
+| Rosto humano | +11,3 | +11,8 |
+| Legenda | +8,2 | +8,3 |
+| Call-to-action | +7,6 | +8,2 |
+| Texto médio (vs. baixo) | +7,4 | +6,9 |
+| Texto alto (vs. baixo) | −7,4 | −7,4 |
+| Retargeting | +4,5 | +4,5 |
+
+- **O modelo aprendeu o que a EDA mostrou.** Os efeitos em pontos ficam a no máximo 0,6 ponto dos da Parte 1 e variam pouco entre partições. Música/voz e duração quase não pesam, e o contexto pesa menos que o criativo.
+- **Formato por plataforma.** Na Meta, o horizontal tem 4,9 pontos a menos que o vertical; no TikTok, o quadrado tem 3,0 a menos. No LinkedIn, o vertical tem 8,4 a menos que o horizontal, mas são só 11 campanhas verticais, e na EDA esse resultado é tendência, não conclusão. TikTok horizontal não existe na base e fica sem suporte.
+- **Importância para prever não é efeito causal.** A importância por permutação mostra quanto o modelo depende de cada variável para acertar o score, e os coeficientes descrevem associações entre campanhas parecidas. Nenhum dos dois mostra o que acontece quando o criativo muda. Isso vale em especial para plataforma × formato: formato e plataforma andam junto com outras escolhas, e mudar o formato de um vídeo pronto não garante a diferença prevista.
+
+### Modelo B: o score acompanha a performance?
+
+Com as sete taxas de performance, o mesmo protocolo e a mesma especificação, o modelo B erra 5,42 pontos na validação cruzada, contra 6,78 do A, com melhora em todas as partições. No teste, consultado depois do A, erra 5,29 contra 6,43: 1,13 ponto a menos, com intervalo de 0,26 a 2,00. Mesmo no B, embaralhar os atributos do criativo aumenta o erro em 7,5 pontos, contra 3,8 das taxas. **O score acompanha a performance realizada só em parte e premia atributos do criativo por conta própria,** como legenda e CTA, que não mostram efeito robusto em performance. Essa conclusão vale para o score desta base simulada e não deve ser transferida automaticamente para a metodologia real da Klike. O modelo B não serve para criativos novos e não entra no recommendations engine.
+
+### O que isso muda para a Klike
+
+- **Pontuar um criativo antes de gastar é viável,** com erro típico de 6 a 7 pontos.
+- **O score previsto serve para separar criativos, não para cravar números.** A diferença prevista indica a confiança na comparação: a partir de 10 pontos, ela costuma apontar o criativo certo; abaixo de 5, não deve decidir uma escolha. Um limiar para uso real precisa ser validado em dados novos.
+- **O recommendations engine, na Parte 3, parte dos efeitos do modelo.** Cada sugestão traz o nível de evidência da Parte 1 sobre performance, o LinkedIn pede mais cautela e combinações sem suporte, como TikTok horizontal, não recebem recomendação.
+- **Vale validar com a Klike os pesos do score** para legenda, CTA e texto médio, lembrando que este score é simulado.
 
 ---
 
 ## Limitações
 
-- **Associação, não causa.** Os efeitos comparam campanhas parecidas, mas algo não observado, como a qualidade da oferta, pode andar junto com o atributo. Testes A/B confirmariam.
-- **A base é pequena e simulada.** São 500 campanhas, e só 83 no LinkedIn, onde os intervalos de confiança ficam largos.
+- **Associação, não causa.** Os efeitos da EDA e os do modelo comparam campanhas parecidas, mas algo não observado, como a qualidade da oferta, pode andar junto com o atributo. Testes A/B confirmariam.
+- **A base é pequena e simulada.** São 500 campanhas, e só 83 no LinkedIn, onde os intervalos de confiança ficam largos. É também onde o modelo erra mais, e o vídeo vertical no LinkedIn tem só 11 campanhas.
+- **O teste tem 100 campanhas.** O intervalo do MAE vai de 5,55 a 7,33 pontos: o teste confirma a ordem de grandeza do erro, mas não distingue diferenças de menos de cerca de 1 ponto, e por plataforma é só descritivo, com margens aproximadas. O bootstrap reamostra as campanhas do teste com o modelo fixo, então não inclui a incerteza de um novo treinamento.
+- **As previsões são conservadoras nos extremos.** Um criativo excepcional tende a receber nota abaixo da real, e um muito fraco, acima.
 - **CTR e engajamento parecem ter teto de registro:** muitos valores exatamente em 15% e 10%, e nenhum acima. Se for censura, as estimativas sobre essas métricas podem estar distorcidas, e a direção do viés depende de quais campanhas bateram no teto.
 - **MNAR não pode ser descartado em música/voz e engajamento,** porque nenhuma variável observada é correlacionada o bastante com elas para servir de pista. Os testes mostram que a ausência é compatível com acaso, não que seja aleatória. Os indicadores de ausência testados na Parte 2 não trouxeram ganho e ficaram de fora; mesmo que entrassem, não corrigiriam um viés desse tipo.
 - **Há poucos vídeos longos no TikTok:** só 5 passam de 30 segundos, então a base não testa vídeos longos nessa plataforma.
-- **A exploração inicial da Parte 2 viu as 500 campanhas,** como a EDA, inclusive as que depois foram para o teste. O teste final não é totalmente intocado em relação às escolhas do plano: o protocolo limita esse efeito, mas não o elimina.
+- **A exploração inicial da Parte 2 viu as 500 campanhas,** como a EDA, inclusive as que depois foram para o teste. O teste final não é totalmente intocado em relação às escolhas do plano: o protocolo limita esse efeito, e o resultado compatível com a validação cruzada o atenua, mas nenhum dos dois o elimina.
 - **Não há identificador de criativo.** Nenhuma campanha repete todas as variáveis de pré-publicação de outra, mas isso não prova que versões do mesmo anúncio não estejam em lados diferentes da divisão entre desenvolvimento e teste.
 
 ---
@@ -277,7 +341,7 @@ Para reexecutar os notebooks do zero e regenerar as figuras:
 jupyter nbconvert --to notebook --execute --inplace notebooks/01_data_audit.ipynb notebooks/02_eda_insights.ipynb notebooks/03_modeling.ipynb
 ```
 
-O notebook 01 pode levar até um minuto e meio, por causa do teste de permutação dos faltantes.
+O notebook 01 pode levar até um minuto e meio, por causa do teste de permutação dos faltantes, e o 03, cerca de três minutos, por causa da validação cruzada aninhada.
 
 ## Estrutura do repositório
 
@@ -294,7 +358,7 @@ O notebook 01 pode levar até um minuto e meio, por causa do teste de permutaç�
 │   ├── config.py                 caminhos, grupos de colunas e constantes
 │   ├── data.py                   carregamento, validação e limpeza
 │   ├── analysis.py               métricas comparáveis, efeitos e níveis de evidência
-│   ├── modeling.py               features declaradas, divisão, validação e pipelines
+│   ├── modeling.py               features, divisão, validação, pipelines e diagnósticos
 │   ├── formatting.py             números no padrão brasileiro
 │   └── viz.py                    estilo visual único dos gráficos
 └── tests/                        testes automatizados (pytest)
