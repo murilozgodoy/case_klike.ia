@@ -1,0 +1,255 @@
+{
+ "campanha_id": "KLK-0001",
+ "campanha": {
+  "platform": "Meta",
+  "category": "Branding",
+  "objective": "awareness",
+  "target_audience_age": "18-24",
+  "is_retargeting": false,
+  "video_duration_s": null,
+  "format": "vertical",
+  "has_subtitle": true,
+  "has_cta": true,
+  "has_hook": false,
+  "has_face": true,
+  "text_density": "medium",
+  "music_voice_ratio": 0.39
+ },
+ "contexto": {
+  "platform": "Meta",
+  "category": "Branding",
+  "objective": "awareness",
+  "target_audience_age": "18-24",
+  "is_retargeting": false
+ },
+ "objetivo": "awareness",
+ "metrica": "completion_rate",
+ "metrica_nome": "retenção",
+ "metrica_principal_do_objetivo": "completion_rate",
+ "metrica_selecionada_manualmente": false,
+ "score_previsto": 63.69,
+ "observado": {
+  "klike_score": 63.6,
+  "completion_rate": null
+ },
+ "campanhas_na_mesma_combinacao": 106,
+ "resumo": "2 recomendações, todas com evidência na métrica do objetivo (2 de classe A). Há menos de três recomendações defensáveis para esta campanha, e o engine não completa a lista com sugestões sem base. O criativo já tem rosto humano, legenda e call-to-action e usa texto médio.",
+ "composicao": {
+  "recomendacoes": 2,
+  "com_evidencia_na_metrica": 2,
+  "hipoteses_de_score": 0,
+  "por_classe": {
+   "A": 2,
+   "B": 0,
+   "C": 0
+  },
+  "menos_de_tres": true
+ },
+ "principais": [
+  {
+   "prioridade": 1,
+   "acao": "hook",
+   "titulo": "Incluir um hook nos 3 primeiros segundos",
+   "classe": "A",
+   "metrica_nome": "retenção",
+   "impacto_estimado": "retenção +39% (de +26% a +53%), evidência robusta",
+   "diferenca_score": 17.03,
+   "ressalvas": [
+    "pouca base no contexto (só na plataforma)"
+   ]
+  },
+  {
+   "prioridade": 2,
+   "acao": "musica",
+   "titulo": "Aumentar a proporção música/voz de 0,39 para 0,49",
+   "classe": "A",
+   "metrica_nome": "retenção",
+   "impacto_estimado": "retenção +4% (de +2% a +6%), evidência robusta",
+   "diferenca_score": -0.47,
+   "ressalvas": [
+    "score previsto cai",
+    "pouca base no contexto (só na plataforma)"
+   ]
+  }
+ ],
+ "nota_metodologica": "As associações com performance são gerais: estimadas na base inteira, com ajuste pelo contexto da campanha e pelos outros atributos do criativo (o formato, dentro de cada plataforma). Não são efeitos medidos só em campanhas como esta. O suporte histórico contextual conta campanhas comparáveis no recorte indicado: descreve a base de comparação, não uma estimativa do efeito nesse recorte. O score é a previsão do modelo. Nada disso é efeito causal.",
+ "avisos": [
+  "Duração não informada: o modelo usa a mediana das campanhas de treino."
+ ],
+ "recomendacoes": [
+  {
+   "prioridade": 1,
+   "acao": "hook",
+   "titulo": "Incluir um hook nos 3 primeiros segundos",
+   "campo": "has_hook",
+   "valor_atual": false,
+   "valor_sugerido": true,
+   "de": "sem hook",
+   "para": "com hook",
+   "classe": "A",
+   "classe_descricao": "melhoria com evidência de performance",
+   "impacto_estimado": "retenção +39% (de +26% a +53%), evidência robusta",
+   "metrica": "completion_rate",
+   "metrica_nome": "retenção",
+   "associacao": {
+    "metrica": "completion_rate",
+    "metrica_nome": "retenção",
+    "variacao": 0.386,
+    "ic_inferior": 0.2551,
+    "ic_superior": 0.5306,
+    "unidade": "variação relativa",
+    "evidencia": "robusto",
+    "estavel": true,
+    "p_valor": 1.1330696738148334e-10,
+    "q_valor": 7.931487716703834e-09,
+    "campanhas": 437,
+    "sensibilidade": null,
+    "limitacoes": "limitada a 100%: 32 campanhas; 63 sem tempo assistido ou duração"
+   },
+   "outras_associacoes": [
+    {
+     "metrica": "ctr",
+     "metrica_nome": "CTR",
+     "variacao": 0.5134,
+     "ic_inferior": 0.3118,
+     "ic_superior": 0.7459,
+     "unidade": "variação relativa",
+     "evidencia": "robusto",
+     "estavel": true,
+     "p_valor": 1.3328152017134734e-08,
+     "q_valor": 4.664853205997157e-07,
+     "campanhas": 500,
+     "sensibilidade": null,
+     "limitacoes": "teto de registro: 55 campanhas com CTR de 15%"
+    },
+    {
+     "metrica": "engagement_rate",
+     "metrica_nome": "engajamento",
+     "variacao": 0.3812,
+     "ic_inferior": 0.1592,
+     "ic_superior": 0.6458,
+     "unidade": "variação relativa",
+     "evidencia": "robusto",
+     "estavel": true,
+     "p_valor": 0.0003033953329398,
+     "q_valor": 0.003539612217632,
+     "campanhas": 468,
+     "sensibilidade": null,
+     "limitacoes": "teto de registro: 11 campanhas com 10%; 32 sem registro"
+    },
+    {
+     "metrica": "conversions_per_mille",
+     "metrica_nome": "conversões por mil impressões",
+     "variacao": 0.4833,
+     "ic_inferior": 0.256,
+     "ic_superior": 0.7517,
+     "unidade": "variação relativa",
+     "evidencia": "robusto",
+     "estavel": true,
+     "p_valor": 3.385552725574487e-06,
+     "q_valor": 7.89962302634047e-05,
+     "campanhas": 481,
+     "sensibilidade": null,
+     "limitacoes": "19 campanhas sem conversão ficam fora do modelo em log; a binomial negativa as mantém"
+    }
+   ],
+   "score_antes": 63.69,
+   "score_depois": 80.72,
+   "diferenca_score": 17.03,
+   "diferenca_score_modelo": {
+    "estimativa": 17.03,
+    "ic_inferior": 15.66,
+    "ic_superior": 18.54,
+    "observacao": "variabilidade da estimativa do modelo, não efeito causal"
+   },
+   "suporte": {
+    "recorte": "plataforma",
+    "contexto": {
+     "platform": "Meta"
+    },
+    "campanhas_valor_atual": 113,
+    "campanhas_valor_sugerido": 128,
+    "grupo_valor_atual": "sem hook",
+    "grupo_valor_sugerido": "com hook",
+    "minimo_por_lado": 10,
+    "risco_extrapolacao": "moderado",
+    "observacao": "campanhas comparáveis no recorte: descrevem a base de comparação, não uma estimativa do efeito nesse recorte"
+   },
+   "justificativa": "Associação geral, ajustada pelo contexto: na base inteira, ter um hook nos 3 primeiros segundos se associa a retenção +39% (de +26% a +53%), evidência robusta. Não é um efeito estimado só para campanhas como esta; a base não mostrou diferença robusta entre plataformas, o que não prova que ele seja igual em todas. Em outras métricas: CTR +51% (de +31% a +75%), evidência robusta; engajamento +38% (de +16% a +65%), evidência robusta; conversões por mil impressões +48% (de +26% a +75%), evidência robusta.",
+   "nota_de_prioridade": null,
+   "avisos": [
+    "Pouca base no contexto da campanha: só no recorte plataforma há pelo menos 10 campanhas de cada lado da comparação."
+   ],
+   "ressalvas": [
+    "pouca base no contexto (só na plataforma)"
+   ],
+   "proximo_passo": "Teste A/B da versão com hook contra a atual, medindo retenção."
+  },
+  {
+   "prioridade": 2,
+   "acao": "musica",
+   "titulo": "Aumentar a proporção música/voz de 0,39 para 0,49",
+   "campo": "music_voice_ratio",
+   "valor_atual": 0.39,
+   "valor_sugerido": 0.49,
+   "de": "com música/voz 0,39",
+   "para": "com música/voz 0,49",
+   "classe": "A",
+   "classe_descricao": "melhoria com evidência de performance",
+   "impacto_estimado": "retenção +4% (de +2% a +6%), evidência robusta",
+   "metrica": "completion_rate",
+   "metrica_nome": "retenção",
+   "associacao": {
+    "metrica": "completion_rate",
+    "metrica_nome": "retenção",
+    "variacao": 0.039,
+    "ic_inferior": 0.0151,
+    "ic_superior": 0.0636,
+    "unidade": "variação relativa",
+    "evidencia": "robusto",
+    "estavel": true,
+    "p_valor": 0.0013109939420152,
+    "q_valor": 0.0114711969926331,
+    "campanhas": 404,
+    "sensibilidade": null,
+    "limitacoes": "limitada a 100%: 32 campanhas; 63 sem tempo assistido ou duração"
+   },
+   "outras_associacoes": [],
+   "score_antes": 63.69,
+   "score_depois": 63.21,
+   "diferenca_score": -0.47,
+   "diferenca_score_modelo": {
+    "estimativa": -0.47,
+    "ic_inferior": -0.86,
+    "ic_superior": -0.1,
+    "observacao": "variabilidade da estimativa do modelo, não efeito causal"
+   },
+   "suporte": {
+    "recorte": "plataforma",
+    "contexto": {
+     "platform": "Meta"
+    },
+    "campanhas_valor_atual": 38,
+    "campanhas_valor_sugerido": 30,
+    "grupo_valor_atual": "com música/voz entre 0,34 e 0,43",
+    "grupo_valor_sugerido": "com música/voz entre 0,44 e 0,53",
+    "minimo_por_lado": 10,
+    "risco_extrapolacao": "moderado",
+    "observacao": "campanhas comparáveis no recorte: descrevem a base de comparação, não uma estimativa do efeito nesse recorte",
+    "aproximacao": "janelas de 0,10 em torno do valor atual e do sugerido"
+   },
+   "justificativa": "Associação geral, ajustada pelo contexto: na base inteira, aumentar a proporção música/voz em 0,1 se associa a retenção +4% (de +2% a +6%), evidência robusta. Não é um efeito estimado só para campanhas como esta; a base não mostrou diferença robusta entre plataformas, o que não prova que ele seja igual em todas. A regressão usa as 404 campanhas da base, de todos os objetivos, com retenção e música/voz registradas, e trata a música como termo linear. Essa amostra não se confunde com as contagens do suporte histórico, que só descrevem a base de comparação no recorte. Retenção é a fração média do vídeo assistida (tempo médio assistido ÷ duração, até 100%), uma proxy de atenção. O valor sugerido nunca passa de 0,67, o percentil 90 da base: é um limite contra extrapolação, não uma proporção ideal.",
+   "nota_de_prioridade": null,
+   "avisos": [
+    "Pouca base no contexto da campanha: só no recorte plataforma há pelo menos 10 campanhas de cada lado da comparação.",
+    "O score previsto cai 0,5 pontos com esta edição: o modelo do Klike Score e a associação com retenção apontam em direções opostas."
+   ],
+   "ressalvas": [
+    "score previsto cai",
+    "pouca base no contexto (só na plataforma)"
+   ],
+   "proximo_passo": "Teste A/B da versão com música/voz 0,49 contra a atual, medindo retenção. O ganho associado é pequeno: o teste precisa de amostra suficiente para detectá-lo. Confira também se a narração, com menos espaço, continua passando a mensagem."
+  }
+ ],
+ "nao_recomendadas": []
+}

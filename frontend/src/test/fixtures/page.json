@@ -1,0 +1,46 @@
+{
+ "total": 241,
+ "pagina": 1,
+ "por_pagina": 3,
+ "campanhas": [
+  {
+   "campaign_id": "KLK-0001",
+   "platform": "Meta",
+   "category": "Branding",
+   "objective": "awareness",
+   "format": "vertical",
+   "score_observado": 63.6,
+   "score_previsto": 63.686095512486375,
+   "recomendacoes": 2,
+   "A": 2,
+   "B": 0,
+   "C": 0
+  },
+  {
+   "campaign_id": "KLK-0005",
+   "platform": "Meta",
+   "category": "Branding",
+   "objective": "engagement",
+   "format": "vertical",
+   "score_observado": 77.9,
+   "score_previsto": 75.71227018266492,
+   "recomendacoes": 1,
+   "A": 0,
+   "B": 0,
+   "C": 1
+  },
+  {
+   "campaign_id": "KLK-0006",
+   "platform": "Meta",
+   "category": "E-commerce",
+   "objective": "conversions",
+   "format": "vertical",
+   "score_observado": 75.6,
+   "score_previsto": 79.4179706674972,
+   "recomendacoes": 1,
+   "A": 0,
+   "B": 0,
+   "C": 1
+  }
+ ]
+}
