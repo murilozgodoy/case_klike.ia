@@ -1,0 +1,224 @@
+{
+ "campos": [
+  {
+   "campo": "platform",
+   "rotulo": "Plataforma",
+   "grupo": "contexto",
+   "tipo": "categoria",
+   "opcoes": [
+    "Meta",
+    "TikTok",
+    "LinkedIn"
+   ],
+   "obrigatorio": true
+  },
+  {
+   "campo": "category",
+   "rotulo": "Categoria",
+   "grupo": "contexto",
+   "tipo": "categoria",
+   "opcoes": [
+    "E-commerce",
+    "SaaS",
+    "Lead Gen",
+    "App Install",
+    "Branding"
+   ],
+   "obrigatorio": true
+  },
+  {
+   "campo": "objective",
+   "rotulo": "Objetivo",
+   "grupo": "contexto",
+   "tipo": "categoria",
+   "opcoes": [
+    "conversions",
+    "traffic",
+    "engagement",
+    "awareness",
+    "app_install"
+   ],
+   "obrigatorio": true
+  },
+  {
+   "campo": "target_audience_age",
+   "rotulo": "Faixa etária",
+   "grupo": "contexto",
+   "tipo": "categoria",
+   "opcoes": [
+    "18-24",
+    "25-34",
+    "35-44",
+    "45+"
+   ],
+   "obrigatorio": true
+  },
+  {
+   "campo": "is_retargeting",
+   "rotulo": "Retargeting",
+   "grupo": "contexto",
+   "tipo": "booleano",
+   "opcoes": null,
+   "obrigatorio": true
+  },
+  {
+   "campo": "video_duration_s",
+   "rotulo": "Duração do vídeo (s)",
+   "grupo": "criativo",
+   "tipo": "numero",
+   "opcoes": null,
+   "obrigatorio": false,
+   "minimo": 0,
+   "minimo_exclusivo": true,
+   "unidade": "segundos"
+  },
+  {
+   "campo": "format",
+   "rotulo": "Formato",
+   "grupo": "criativo",
+   "tipo": "categoria",
+   "opcoes": [
+    "vertical",
+    "quadrado",
+    "horizontal"
+   ],
+   "obrigatorio": true
+  },
+  {
+   "campo": "has_subtitle",
+   "rotulo": "Legenda",
+   "grupo": "criativo",
+   "tipo": "booleano",
+   "opcoes": null,
+   "obrigatorio": false
+  },
+  {
+   "campo": "has_cta",
+   "rotulo": "Call-to-action",
+   "grupo": "criativo",
+   "tipo": "booleano",
+   "opcoes": null,
+   "obrigatorio": true
+  },
+  {
+   "campo": "has_hook",
+   "rotulo": "Hook nos 3 primeiros segundos",
+   "grupo": "criativo",
+   "tipo": "booleano",
+   "opcoes": null,
+   "obrigatorio": true
+  },
+  {
+   "campo": "has_face",
+   "rotulo": "Rosto humano",
+   "grupo": "criativo",
+   "tipo": "booleano",
+   "opcoes": null,
+   "obrigatorio": true
+  },
+  {
+   "campo": "text_density",
+   "rotulo": "Densidade de texto",
+   "grupo": "criativo",
+   "tipo": "categoria",
+   "opcoes": [
+    "low",
+    "medium",
+    "high"
+   ],
+   "obrigatorio": true
+  },
+  {
+   "campo": "music_voice_ratio",
+   "rotulo": "Proporção música/voz",
+   "grupo": "criativo",
+   "tipo": "numero",
+   "opcoes": null,
+   "obrigatorio": false,
+   "minimo": 0,
+   "maximo": 1,
+   "passo": 0.01
+  }
+ ],
+ "atributos_contexto": [
+  "platform",
+  "category",
+  "objective",
+  "target_audience_age",
+  "is_retargeting"
+ ],
+ "atributos_criativo": [
+  "video_duration_s",
+  "format",
+  "has_subtitle",
+  "has_cta",
+  "has_hook",
+  "has_face",
+  "text_density",
+  "music_voice_ratio"
+ ],
+ "metricas": {
+  "ctr": "CTR",
+  "engagement_rate": "engajamento",
+  "completion_rate": "retenção",
+  "conversions_per_mille": "conversões por mil impressões",
+  "roas_non_branding": "ROAS"
+ },
+ "metrica_por_objetivo": {
+  "traffic": "ctr",
+  "engagement": "engagement_rate",
+  "awareness": "completion_rate",
+  "conversions": "conversions_per_mille",
+  "app_install": "conversions_per_mille"
+ },
+ "classes": {
+  "A": "melhoria com evidência de performance",
+  "B": "melhoria com evidência fraca ou sensível",
+  "C": "oportunidade de score, sem evidência suficiente na métrica do objetivo"
+ },
+ "nota_metodologica": "As associações com performance são gerais: estimadas na base inteira, com ajuste pelo contexto da campanha e pelos outros atributos do criativo (o formato, dentro de cada plataforma). Não são efeitos medidos só em campanhas como esta. O suporte histórico contextual conta campanhas comparáveis no recorte indicado: descreve a base de comparação, não uma estimativa do efeito nesse recorte. O score é a previsão do modelo. Nada disso é efeito causal.",
+ "indicadores": {
+  "campanhas": 500,
+  "modelo": {
+   "descricao": "Certificação da Parte 2: modelo treinado nas 400 campanhas de desenvolvimento e avaliado uma única vez nas 100 reservadas.",
+   "mae": 6.43,
+   "mae_ic95": [
+    5.55,
+    7.33
+   ],
+   "mae_dummy": 11.67,
+   "r2": 0.7
+  },
+  "avaliacao_engine": {
+   "descricao": "Avaliação funcional do engine nas 500 campanhas da base: mede cobertura e composição, não o impacto das edições.",
+   "recomendacoes": 1257,
+   "campanhas_tres_ou_mais": 247,
+   "parcela_tres_ou_mais": 0.494,
+   "campanhas_com_evidencia": 395,
+   "campanhas_tres_ou_mais_com_evidencia": 34,
+   "campanhas_sem_recomendacao": 20,
+   "classes": {
+    "A": 523,
+    "B": 86,
+    "C": 648
+   }
+  }
+ },
+ "exemplos": [
+  {
+   "campaign_id": "KLK-0024",
+   "titulo": "As três classes de recomendação",
+   "descricao": "Campanha de conversões na Meta: hook e rosto com evidência robusta (A), texto com evidência sensível (B) e o formato vertical só como hipótese de score (C)."
+  },
+  {
+   "campaign_id": "KLK-0291",
+   "titulo": "Score alto, nenhuma recomendação",
+   "descricao": "O criativo já segue o catálogo e o score observado é 89,1: o engine diz que não há edição com base, em vez de completar a lista."
+  },
+  {
+   "campaign_id": "KLK-0001",
+   "titulo": "Música/voz: retenção e score em direções opostas",
+   "descricao": "Campanha de awareness em que mais música se associa a mais retenção, enquanto o score previsto cai: a recomendação mostra as duas coisas."
+  }
+ ]
+}

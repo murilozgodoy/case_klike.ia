@@ -1,0 +1,55 @@
+{
+ "campanha_id": "KLK-0291",
+ "campanha": {
+  "platform": "Meta",
+  "category": "E-commerce",
+  "objective": "conversions",
+  "target_audience_age": "25-34",
+  "is_retargeting": false,
+  "video_duration_s": 7.0,
+  "format": "vertical",
+  "has_subtitle": null,
+  "has_cta": true,
+  "has_hook": true,
+  "has_face": true,
+  "text_density": "medium",
+  "music_voice_ratio": 0.32
+ },
+ "contexto": {
+  "platform": "Meta",
+  "category": "E-commerce",
+  "objective": "conversions",
+  "target_audience_age": "25-34",
+  "is_retargeting": false
+ },
+ "objetivo": "conversions",
+ "metrica": "conversions_per_mille",
+ "metrica_nome": "conversões por mil impressões",
+ "metrica_principal_do_objetivo": "conversions_per_mille",
+ "metrica_selecionada_manualmente": false,
+ "score_previsto": 82.94,
+ "observado": {
+  "klike_score": 89.1,
+  "conversions_per_mille": 0.4079967360261118
+ },
+ "campanhas_na_mesma_combinacao": 106,
+ "resumo": "Nenhuma edição do catálogo tem base para esta campanha. O criativo já tem hook, rosto humano e call-to-action e usa texto médio.",
+ "composicao": {
+  "recomendacoes": 0,
+  "com_evidencia_na_metrica": 0,
+  "hipoteses_de_score": 0,
+  "por_classe": {
+   "A": 0,
+   "B": 0,
+   "C": 0
+  },
+  "menos_de_tres": true
+ },
+ "principais": [],
+ "nota_metodologica": "As associações com performance são gerais: estimadas na base inteira, com ajuste pelo contexto da campanha e pelos outros atributos do criativo (o formato, dentro de cada plataforma). Não são efeitos medidos só em campanhas como esta. O suporte histórico contextual conta campanhas comparáveis no recorte indicado: descreve a base de comparação, não uma estimativa do efeito nesse recorte. O score é a previsão do modelo. Nada disso é efeito causal.",
+ "avisos": [
+  "Legenda sem marcação: o engine não sabe se o vídeo tem legenda e não sugere incluí-la."
+ ],
+ "recomendacoes": [],
+ "nao_recomendadas": []
+}

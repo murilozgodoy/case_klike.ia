@@ -1,0 +1,1003 @@
+{
+ "alteracao": {
+  "campo": "has_hook",
+  "rotulo": "Hook nos 3 primeiros segundos",
+  "valor_original": false,
+  "valor_novo": true
+ },
+ "score": {
+  "original": 37.599876588307936,
+  "modificado": 54.63380951460642,
+  "diferenca": 17.033932926298483
+ },
+ "evidencia": {
+  "situacao": "recomendada",
+  "acao": "hook",
+  "recomendacao": {
+   "prioridade": 1,
+   "acao": "hook",
+   "titulo": "Incluir um hook nos 3 primeiros segundos",
+   "campo": "has_hook",
+   "valor_atual": false,
+   "valor_sugerido": true,
+   "de": "sem hook",
+   "para": "com hook",
+   "classe": "A",
+   "classe_descricao": "melhoria com evidência de performance",
+   "impacto_estimado": "conversões por mil impressões +48% (de +26% a +75%), evidência robusta",
+   "metrica": "conversions_per_mille",
+   "metrica_nome": "conversões por mil impressões",
+   "associacao": {
+    "metrica": "conversions_per_mille",
+    "metrica_nome": "conversões por mil impressões",
+    "variacao": 0.4833,
+    "ic_inferior": 0.256,
+    "ic_superior": 0.7517,
+    "unidade": "variação relativa",
+    "evidencia": "robusto",
+    "estavel": true,
+    "p_valor": 3.385552725574487e-06,
+    "q_valor": 7.89962302634047e-05,
+    "campanhas": 481,
+    "sensibilidade": null,
+    "limitacoes": "19 campanhas sem conversão ficam fora do modelo em log; a binomial negativa as mantém"
+   },
+   "outras_associacoes": [
+    {
+     "metrica": "ctr",
+     "metrica_nome": "CTR",
+     "variacao": 0.5134,
+     "ic_inferior": 0.3118,
+     "ic_superior": 0.7459,
+     "unidade": "variação relativa",
+     "evidencia": "robusto",
+     "estavel": true,
+     "p_valor": 1.3328152017134734e-08,
+     "q_valor": 4.664853205997157e-07,
+     "campanhas": 500,
+     "sensibilidade": null,
+     "limitacoes": "teto de registro: 55 campanhas com CTR de 15%"
+    },
+    {
+     "metrica": "engagement_rate",
+     "metrica_nome": "engajamento",
+     "variacao": 0.3812,
+     "ic_inferior": 0.1592,
+     "ic_superior": 0.6458,
+     "unidade": "variação relativa",
+     "evidencia": "robusto",
+     "estavel": true,
+     "p_valor": 0.0003033953329398,
+     "q_valor": 0.003539612217632,
+     "campanhas": 468,
+     "sensibilidade": null,
+     "limitacoes": "teto de registro: 11 campanhas com 10%; 32 sem registro"
+    },
+    {
+     "metrica": "completion_rate",
+     "metrica_nome": "retenção",
+     "variacao": 0.386,
+     "ic_inferior": 0.2551,
+     "ic_superior": 0.5306,
+     "unidade": "variação relativa",
+     "evidencia": "robusto",
+     "estavel": true,
+     "p_valor": 1.1330696738148334e-10,
+     "q_valor": 7.931487716703834e-09,
+     "campanhas": 437,
+     "sensibilidade": null,
+     "limitacoes": "limitada a 100%: 32 campanhas; 63 sem tempo assistido ou duração"
+    }
+   ],
+   "score_antes": 37.6,
+   "score_depois": 54.63,
+   "diferenca_score": 17.03,
+   "diferenca_score_modelo": {
+    "estimativa": 17.03,
+    "ic_inferior": 15.66,
+    "ic_superior": 18.54,
+    "observacao": "variabilidade da estimativa do modelo, não efeito causal"
+   },
+   "suporte": {
+    "recorte": "plataforma e objetivo",
+    "contexto": {
+     "platform": "Meta",
+     "objective": "conversions"
+    },
+    "campanhas_valor_atual": 39,
+    "campanhas_valor_sugerido": 45,
+    "grupo_valor_atual": "sem hook",
+    "grupo_valor_sugerido": "com hook",
+    "minimo_por_lado": 10,
+    "risco_extrapolacao": "baixo",
+    "observacao": "campanhas comparáveis no recorte: descrevem a base de comparação, não uma estimativa do efeito nesse recorte"
+   },
+   "justificativa": "Associação geral, ajustada pelo contexto: na base inteira, ter um hook nos 3 primeiros segundos se associa a conversões por mil impressões +48% (de +26% a +75%), evidência robusta. Não é um efeito estimado só para campanhas como esta; a base não mostrou diferença robusta entre plataformas, o que não prova que ele seja igual em todas. Em outras métricas: CTR +51% (de +31% a +75%), evidência robusta; engajamento +38% (de +16% a +65%), evidência robusta; retenção +39% (de +26% a +53%), evidência robusta.",
+   "nota_de_prioridade": null,
+   "avisos": [],
+   "ressalvas": [
+    "associação, não causa (validar em A/B)"
+   ],
+   "proximo_passo": "Teste A/B da versão com hook contra a atual, medindo conversões por mil impressões."
+  }
+ },
+ "nota": "Esta comparação apresenta a diferença estimada pelo modelo de Klike Score. Não representa o efeito causal de editar o vídeo nem uma previsão de aumento de conversões, e não é um teste A/B.",
+ "original": {
+  "campanha_id": "KLK-0024",
+  "campanha": {
+   "platform": "Meta",
+   "category": "Lead Gen",
+   "objective": "conversions",
+   "target_audience_age": "25-34",
+   "is_retargeting": false,
+   "video_duration_s": 28.0,
+   "format": "horizontal",
+   "has_subtitle": true,
+   "has_cta": true,
+   "has_hook": false,
+   "has_face": false,
+   "text_density": "high",
+   "music_voice_ratio": 0.77
+  },
+  "contexto": {
+   "platform": "Meta",
+   "category": "Lead Gen",
+   "objective": "conversions",
+   "target_audience_age": "25-34",
+   "is_retargeting": false
+  },
+  "objetivo": "conversions",
+  "metrica": "conversions_per_mille",
+  "metrica_nome": "conversões por mil impressões",
+  "metrica_principal_do_objetivo": "conversions_per_mille",
+  "metrica_selecionada_manualmente": false,
+  "score_previsto": 37.6,
+  "observado": {
+   "klike_score": 43.1,
+   "conversions_per_mille": 1.8412636883418936
+  },
+  "campanhas_na_mesma_combinacao": 67,
+  "resumo": "4 recomendações: 3 com evidência na métrica do objetivo (2 de classe A e 1 de classe B) e 1 hipótese de score (classe C).",
+  "composicao": {
+   "recomendacoes": 4,
+   "com_evidencia_na_metrica": 3,
+   "hipoteses_de_score": 1,
+   "por_classe": {
+    "A": 2,
+    "B": 1,
+    "C": 1
+   },
+   "menos_de_tres": false
+  },
+  "principais": [
+   {
+    "prioridade": 1,
+    "acao": "hook",
+    "titulo": "Incluir um hook nos 3 primeiros segundos",
+    "classe": "A",
+    "metrica_nome": "conversões por mil impressões",
+    "impacto_estimado": "conversões por mil impressões +48% (de +26% a +75%), evidência robusta",
+    "diferenca_score": 17.03,
+    "ressalvas": [
+     "associação, não causa (validar em A/B)"
+    ]
+   },
+   {
+    "prioridade": 2,
+    "acao": "rosto",
+    "titulo": "Mostrar um rosto humano",
+    "classe": "A",
+    "metrica_nome": "conversões por mil impressões",
+    "impacto_estimado": "conversões por mil impressões +29% (de +10% a +52%), evidência robusta",
+    "diferenca_score": 11.84,
+    "ressalvas": [
+     "associação, não causa (validar em A/B)"
+    ]
+   },
+   {
+    "prioridade": 3,
+    "acao": "texto_alto_medio",
+    "titulo": "Reduzir o texto na tela de alto para médio",
+    "classe": "B",
+    "metrica_nome": "conversões por mil impressões",
+    "impacto_estimado": "conversões por mil impressões +36% (de +8% a +71%), evidência robusta, mas sensível à análise",
+    "diferenca_score": 13.97,
+    "ressalvas": [
+     "classe sensível à análise"
+    ]
+   }
+  ],
+  "nota_metodologica": "As associações com performance são gerais: estimadas na base inteira, com ajuste pelo contexto da campanha e pelos outros atributos do criativo (o formato, dentro de cada plataforma). Não são efeitos medidos só em campanhas como esta. O suporte histórico contextual conta campanhas comparáveis no recorte indicado: descreve a base de comparação, não uma estimativa do efeito nesse recorte. O score é a previsão do modelo. Nada disso é efeito causal.",
+  "avisos": [],
+  "recomendacoes": [
+   {
+    "prioridade": 1,
+    "acao": "hook",
+    "titulo": "Incluir um hook nos 3 primeiros segundos",
+    "campo": "has_hook",
+    "valor_atual": false,
+    "valor_sugerido": true,
+    "de": "sem hook",
+    "para": "com hook",
+    "classe": "A",
+    "classe_descricao": "melhoria com evidência de performance",
+    "impacto_estimado": "conversões por mil impressões +48% (de +26% a +75%), evidência robusta",
+    "metrica": "conversions_per_mille",
+    "metrica_nome": "conversões por mil impressões",
+    "associacao": {
+     "metrica": "conversions_per_mille",
+     "metrica_nome": "conversões por mil impressões",
+     "variacao": 0.4833,
+     "ic_inferior": 0.256,
+     "ic_superior": 0.7517,
+     "unidade": "variação relativa",
+     "evidencia": "robusto",
+     "estavel": true,
+     "p_valor": 3.385552725574487e-06,
+     "q_valor": 7.89962302634047e-05,
+     "campanhas": 481,
+     "sensibilidade": null,
+     "limitacoes": "19 campanhas sem conversão ficam fora do modelo em log; a binomial negativa as mantém"
+    },
+    "outras_associacoes": [
+     {
+      "metrica": "ctr",
+      "metrica_nome": "CTR",
+      "variacao": 0.5134,
+      "ic_inferior": 0.3118,
+      "ic_superior": 0.7459,
+      "unidade": "variação relativa",
+      "evidencia": "robusto",
+      "estavel": true,
+      "p_valor": 1.3328152017134734e-08,
+      "q_valor": 4.664853205997157e-07,
+      "campanhas": 500,
+      "sensibilidade": null,
+      "limitacoes": "teto de registro: 55 campanhas com CTR de 15%"
+     },
+     {
+      "metrica": "engagement_rate",
+      "metrica_nome": "engajamento",
+      "variacao": 0.3812,
+      "ic_inferior": 0.1592,
+      "ic_superior": 0.6458,
+      "unidade": "variação relativa",
+      "evidencia": "robusto",
+      "estavel": true,
+      "p_valor": 0.0003033953329398,
+      "q_valor": 0.003539612217632,
+      "campanhas": 468,
+      "sensibilidade": null,
+      "limitacoes": "teto de registro: 11 campanhas com 10%; 32 sem registro"
+     },
+     {
+      "metrica": "completion_rate",
+      "metrica_nome": "retenção",
+      "variacao": 0.386,
+      "ic_inferior": 0.2551,
+      "ic_superior": 0.5306,
+      "unidade": "variação relativa",
+      "evidencia": "robusto",
+      "estavel": true,
+      "p_valor": 1.1330696738148334e-10,
+      "q_valor": 7.931487716703834e-09,
+      "campanhas": 437,
+      "sensibilidade": null,
+      "limitacoes": "limitada a 100%: 32 campanhas; 63 sem tempo assistido ou duração"
+     }
+    ],
+    "score_antes": 37.6,
+    "score_depois": 54.63,
+    "diferenca_score": 17.03,
+    "diferenca_score_modelo": {
+     "estimativa": 17.03,
+     "ic_inferior": 15.66,
+     "ic_superior": 18.54,
+     "observacao": "variabilidade da estimativa do modelo, não efeito causal"
+    },
+    "suporte": {
+     "recorte": "plataforma e objetivo",
+     "contexto": {
+      "platform": "Meta",
+      "objective": "conversions"
+     },
+     "campanhas_valor_atual": 39,
+     "campanhas_valor_sugerido": 45,
+     "grupo_valor_atual": "sem hook",
+     "grupo_valor_sugerido": "com hook",
+     "minimo_por_lado": 10,
+     "risco_extrapolacao": "baixo",
+     "observacao": "campanhas comparáveis no recorte: descrevem a base de comparação, não uma estimativa do efeito nesse recorte"
+    },
+    "justificativa": "Associação geral, ajustada pelo contexto: na base inteira, ter um hook nos 3 primeiros segundos se associa a conversões por mil impressões +48% (de +26% a +75%), evidência robusta. Não é um efeito estimado só para campanhas como esta; a base não mostrou diferença robusta entre plataformas, o que não prova que ele seja igual em todas. Em outras métricas: CTR +51% (de +31% a +75%), evidência robusta; engajamento +38% (de +16% a +65%), evidência robusta; retenção +39% (de +26% a +53%), evidência robusta.",
+    "nota_de_prioridade": null,
+    "avisos": [],
+    "ressalvas": [
+     "associação, não causa (validar em A/B)"
+    ],
+    "proximo_passo": "Teste A/B da versão com hook contra a atual, medindo conversões por mil impressões."
+   },
+   {
+    "prioridade": 2,
+    "acao": "rosto",
+    "titulo": "Mostrar um rosto humano",
+    "campo": "has_face",
+    "valor_atual": false,
+    "valor_sugerido": true,
+    "de": "sem rosto humano",
+    "para": "com rosto humano",
+    "classe": "A",
+    "classe_descricao": "melhoria com evidência de performance",
+    "impacto_estimado": "conversões por mil impressões +29% (de +10% a +52%), evidência robusta",
+    "metrica": "conversions_per_mille",
+    "metrica_nome": "conversões por mil impressões",
+    "associacao": {
+     "metrica": "conversions_per_mille",
+     "metrica_nome": "conversões por mil impressões",
+     "variacao": 0.2889,
+     "ic_inferior": 0.0952,
+     "ic_superior": 0.517,
+     "unidade": "variação relativa",
+     "evidencia": "robusto",
+     "estavel": true,
+     "p_valor": 0.0022579271056707,
+     "q_valor": 0.017561655266328,
+     "campanhas": 481,
+     "sensibilidade": null,
+     "limitacoes": "19 campanhas sem conversão ficam fora do modelo em log; a binomial negativa as mantém"
+    },
+    "outras_associacoes": [
+     {
+      "metrica": "ctr",
+      "metrica_nome": "CTR",
+      "variacao": 0.235,
+      "ic_inferior": 0.0728,
+      "ic_superior": 0.4216,
+      "unidade": "variação relativa",
+      "evidencia": "robusto",
+      "estavel": true,
+      "p_valor": 0.0032896519878673,
+      "q_valor": 0.0209341490137013,
+      "campanhas": 500,
+      "sensibilidade": null,
+      "limitacoes": "teto de registro: 55 campanhas com CTR de 15%"
+     },
+     {
+      "metrica": "engagement_rate",
+      "metrica_nome": "engajamento",
+      "variacao": 0.4267,
+      "ic_inferior": 0.2011,
+      "ic_superior": 0.6946,
+      "unidade": "variação relativa",
+      "evidencia": "robusto",
+      "estavel": true,
+      "p_valor": 5.1960163448721867e-05,
+      "q_valor": 0.0009093028603526,
+      "campanhas": 468,
+      "sensibilidade": null,
+      "limitacoes": "teto de registro: 11 campanhas com 10%; 32 sem registro"
+     },
+     {
+      "metrica": "completion_rate",
+      "metrica_nome": "retenção",
+      "variacao": 0.1098,
+      "ic_inferior": 0.0023,
+      "ic_superior": 0.229,
+      "unidade": "variação relativa",
+      "evidencia": "indício",
+      "estavel": true,
+      "p_valor": 0.0451551272657116,
+      "q_valor": 0.1859328769764596,
+      "campanhas": 437,
+      "sensibilidade": null,
+      "limitacoes": "limitada a 100%: 32 campanhas; 63 sem tempo assistido ou duração"
+     }
+    ],
+    "score_antes": 37.6,
+    "score_depois": 49.44,
+    "diferenca_score": 11.84,
+    "diferenca_score_modelo": {
+     "estimativa": 11.84,
+     "ic_inferior": 10.41,
+     "ic_superior": 13.3,
+     "observacao": "variabilidade da estimativa do modelo, não efeito causal"
+    },
+    "suporte": {
+     "recorte": "plataforma, categoria e objetivo",
+     "contexto": {
+      "platform": "Meta",
+      "category": "Lead Gen",
+      "objective": "conversions"
+     },
+     "campanhas_valor_atual": 10,
+     "campanhas_valor_sugerido": 10,
+     "grupo_valor_atual": "sem rosto humano",
+     "grupo_valor_sugerido": "com rosto humano",
+     "minimo_por_lado": 10,
+     "risco_extrapolacao": "baixo",
+     "observacao": "campanhas comparáveis no recorte: descrevem a base de comparação, não uma estimativa do efeito nesse recorte"
+    },
+    "justificativa": "Associação geral, ajustada pelo contexto: na base inteira, mostrar um rosto humano se associa a conversões por mil impressões +29% (de +10% a +52%), evidência robusta. Não é um efeito estimado só para campanhas como esta; a base não mostrou diferença robusta entre plataformas, o que não prova que ele seja igual em todas. Em outras métricas: CTR +23,5% (de +7% a +42%), evidência robusta; engajamento +43% (de +20% a +69%), evidência robusta; retenção +11% (de +0,2% a +23%), só indício.",
+    "nota_de_prioridade": null,
+    "avisos": [],
+    "ressalvas": [
+     "associação, não causa (validar em A/B)"
+    ],
+    "proximo_passo": "Teste A/B da versão com rosto humano contra a atual, medindo conversões por mil impressões."
+   },
+   {
+    "prioridade": 3,
+    "acao": "texto_alto_medio",
+    "titulo": "Reduzir o texto na tela de alto para médio",
+    "campo": "text_density",
+    "valor_atual": "high",
+    "valor_sugerido": "medium",
+    "de": "com texto alto",
+    "para": "com texto médio",
+    "classe": "B",
+    "classe_descricao": "melhoria com evidência fraca ou sensível",
+    "impacto_estimado": "conversões por mil impressões +36% (de +8% a +71%), evidência robusta, mas sensível à análise",
+    "metrica": "conversions_per_mille",
+    "metrica_nome": "conversões por mil impressões",
+    "associacao": {
+     "metrica": "conversions_per_mille",
+     "metrica_nome": "conversões por mil impressões",
+     "variacao": 0.3594,
+     "ic_inferior": 0.0822,
+     "ic_superior": 0.7077,
+     "unidade": "variação relativa",
+     "evidencia": "robusto",
+     "estavel": false,
+     "p_valor": 0.0083224775098177,
+     "q_valor": 0.04481334043748,
+     "campanhas": 481,
+     "sensibilidade": "sem as correções por plausibilidade da Parte 1, fica só indício",
+     "limitacoes": "19 campanhas sem conversão ficam fora do modelo em log; a binomial negativa as mantém"
+    },
+    "outras_associacoes": [
+     {
+      "metrica": "ctr",
+      "metrica_nome": "CTR",
+      "variacao": 0.2332,
+      "ic_inferior": 0.0185,
+      "ic_superior": 0.4931,
+      "unidade": "variação relativa",
+      "evidencia": "indício",
+      "estavel": true,
+      "p_valor": 0.0317389357406164,
+      "q_valor": 0.1481150334562101,
+      "campanhas": 500,
+      "sensibilidade": null,
+      "limitacoes": "teto de registro: 55 campanhas com CTR de 15%"
+     },
+     {
+      "metrica": "completion_rate",
+      "metrica_nome": "retenção",
+      "variacao": 0.2913,
+      "ic_inferior": 0.1283,
+      "ic_superior": 0.4779,
+      "unidade": "variação relativa",
+      "evidencia": "robusto",
+      "estavel": true,
+      "p_valor": 0.0002045328142631,
+      "q_valor": 0.0028634593996845,
+      "campanhas": 437,
+      "sensibilidade": null,
+      "limitacoes": "limitada a 100%: 32 campanhas; 63 sem tempo assistido ou duração"
+     },
+     {
+      "metrica": "roas_non_branding",
+      "metrica_nome": "ROAS",
+      "variacao": 0.2085,
+      "ic_inferior": 0.0056,
+      "ic_superior": 0.4523,
+      "unidade": "variação relativa",
+      "evidencia": "indício",
+      "estavel": false,
+      "p_valor": 0.0434328183793411,
+      "q_valor": 0.1859328769764596,
+      "campanhas": 424,
+      "sensibilidade": "sem as correções por plausibilidade da Parte 1, fica inconclusiva",
+      "limitacoes": "não se aplica a Branding (63 campanhas)"
+     }
+    ],
+    "score_antes": 37.6,
+    "score_depois": 51.57,
+    "diferenca_score": 13.97,
+    "diferenca_score_modelo": {
+     "estimativa": 13.97,
+     "ic_inferior": 11.98,
+     "ic_superior": 16.08,
+     "observacao": "variabilidade da estimativa do modelo, não efeito causal"
+    },
+    "suporte": {
+     "recorte": "plataforma e objetivo",
+     "contexto": {
+      "platform": "Meta",
+      "objective": "conversions"
+     },
+     "campanhas_valor_atual": 10,
+     "campanhas_valor_sugerido": 37,
+     "grupo_valor_atual": "com texto alto",
+     "grupo_valor_sugerido": "com texto médio",
+     "minimo_por_lado": 10,
+     "risco_extrapolacao": "baixo",
+     "observacao": "campanhas comparáveis no recorte: descrevem a base de comparação, não uma estimativa do efeito nesse recorte"
+    },
+    "justificativa": "Associação geral, ajustada pelo contexto: na base inteira, usar texto médio em vez de alto se associa a conversões por mil impressões +36% (de +8% a +71%), evidência robusta, mas sensível à análise. Não é um efeito estimado só para campanhas como esta; a base não mostrou diferença robusta entre plataformas, o que não prova que ele seja igual em todas. Em outras métricas: CTR +23% (de +2% a +49%), só indício; retenção +29% (de +13% a +48%), evidência robusta; ROAS +21% (de +1% a +45%), só indício, mas sensível à análise. Reduzir para texto baixo também é opção: conversões por mil impressões +31% (de +3% a +66%), só indício, mas sensível à análise; no modelo, o score sobe +7,2 pontos, contra +14,0 do texto médio.",
+    "nota_de_prioridade": "Tem impacto estimado maior que mostrar um rosto humano, mas fica depois porque a evidência é de classe B: melhoria com evidência fraca ou sensível.",
+    "avisos": [
+     "A classe depende da análise: sem as correções por plausibilidade da Parte 1, fica só indício."
+    ],
+    "ressalvas": [
+     "classe sensível à análise"
+    ],
+    "proximo_passo": "Teste A/B da versão com texto médio contra a atual, medindo conversões por mil impressões."
+   },
+   {
+    "prioridade": 4,
+    "acao": "formato_meta_horizontal",
+    "titulo": "Trocar o vídeo horizontal por vertical",
+    "campo": "format",
+    "valor_atual": "horizontal",
+    "valor_sugerido": "vertical",
+    "de": "com vídeo horizontal",
+    "para": "com vídeo vertical",
+    "classe": "C",
+    "classe_descricao": "oportunidade de score, sem evidência suficiente na métrica do objetivo",
+    "impacto_estimado": "Klike Score +4,7 pontos; sem evidência suficiente em conversões por mil impressões",
+    "metrica": "conversions_per_mille",
+    "metrica_nome": "conversões por mil impressões",
+    "associacao": {
+     "metrica": "conversions_per_mille",
+     "metrica_nome": "conversões por mil impressões",
+     "variacao": 0.0158,
+     "ic_inferior": -0.2616,
+     "ic_superior": 0.3975,
+     "unidade": "variação relativa",
+     "evidencia": "inconclusivo",
+     "estavel": true,
+     "p_valor": 0.9231948637377292,
+     "q_valor": 0.9791460676006216,
+     "campanhas": 234,
+     "sensibilidade": null,
+     "limitacoes": "19 campanhas sem conversão ficam fora do modelo em log; a binomial negativa as mantém"
+    },
+    "outras_associacoes": [
+     {
+      "metrica": "engagement_rate",
+      "metrica_nome": "engajamento",
+      "variacao": 0.6319,
+      "ic_inferior": 0.2205,
+      "ic_superior": 1.1821,
+      "unidade": "variação relativa",
+      "evidencia": "robusto",
+      "estavel": true,
+      "p_valor": 0.0009530613942607,
+      "q_valor": 0.0095306139426078,
+      "campanhas": 224,
+      "sensibilidade": null,
+      "limitacoes": "teto de registro: 11 campanhas com 10%; 32 sem registro"
+     }
+    ],
+    "score_antes": 37.6,
+    "score_depois": 42.32,
+    "diferenca_score": 4.72,
+    "diferenca_score_modelo": {
+     "estimativa": 4.72,
+     "ic_inferior": 2.56,
+     "ic_superior": 6.83,
+     "observacao": "variabilidade da estimativa do modelo, não efeito causal"
+    },
+    "suporte": {
+     "recorte": "plataforma e objetivo",
+     "contexto": {
+      "platform": "Meta",
+      "objective": "conversions"
+     },
+     "campanhas_valor_atual": 31,
+     "campanhas_valor_sugerido": 27,
+     "grupo_valor_atual": "com vídeo horizontal",
+     "grupo_valor_sugerido": "com vídeo vertical",
+     "minimo_por_lado": 10,
+     "risco_extrapolacao": "baixo",
+     "observacao": "campanhas comparáveis no recorte: descrevem a base de comparação, não uma estimativa do efeito nesse recorte"
+    },
+    "justificativa": "O modelo prevê mais score, mas não há evidência suficiente de ganho em conversões por mil impressões, a métrica do objetivo: +2% (de −26% a +40%), inconclusiva. Em outras métricas: engajamento +63% (de +22% a +118%), evidência robusta.",
+    "nota_de_prioridade": "Oportunidade de score: fica depois das recomendações com evidência na métrica do objetivo.",
+    "avisos": [
+     "Sem evidência suficiente de ganho em conversões por mil impressões, a métrica do objetivo: é uma oportunidade de score, não um ganho comprovado nessa métrica. Em outras métricas, a base mostra associação favorável: engajamento."
+    ],
+    "ressalvas": [
+     "sem evidência na métrica"
+    ],
+    "proximo_passo": "Testar em A/B antes de adotar, medindo conversões por mil impressões: a base não mostra ganho suficiente nessa métrica."
+   }
+  ],
+  "nao_recomendadas": []
+ },
+ "modificado": {
+  "campanha_id": null,
+  "campanha": {
+   "platform": "Meta",
+   "category": "Lead Gen",
+   "objective": "conversions",
+   "target_audience_age": "25-34",
+   "is_retargeting": false,
+   "video_duration_s": 28.0,
+   "format": "horizontal",
+   "has_subtitle": true,
+   "has_cta": true,
+   "has_hook": true,
+   "has_face": false,
+   "text_density": "high",
+   "music_voice_ratio": 0.77
+  },
+  "contexto": {
+   "platform": "Meta",
+   "category": "Lead Gen",
+   "objective": "conversions",
+   "target_audience_age": "25-34",
+   "is_retargeting": false
+  },
+  "objetivo": "conversions",
+  "metrica": "conversions_per_mille",
+  "metrica_nome": "conversões por mil impressões",
+  "metrica_principal_do_objetivo": "conversions_per_mille",
+  "metrica_selecionada_manualmente": false,
+  "score_previsto": 54.63,
+  "observado": null,
+  "campanhas_na_mesma_combinacao": 67,
+  "resumo": "3 recomendações: 2 com evidência na métrica do objetivo (1 de classe A e 1 de classe B) e 1 hipótese de score (classe C).",
+  "composicao": {
+   "recomendacoes": 3,
+   "com_evidencia_na_metrica": 2,
+   "hipoteses_de_score": 1,
+   "por_classe": {
+    "A": 1,
+    "B": 1,
+    "C": 1
+   },
+   "menos_de_tres": false
+  },
+  "principais": [
+   {
+    "prioridade": 1,
+    "acao": "rosto",
+    "titulo": "Mostrar um rosto humano",
+    "classe": "A",
+    "metrica_nome": "conversões por mil impressões",
+    "impacto_estimado": "conversões por mil impressões +29% (de +10% a +52%), evidência robusta",
+    "diferenca_score": 11.84,
+    "ressalvas": [
+     "associação, não causa (validar em A/B)"
+    ]
+   },
+   {
+    "prioridade": 2,
+    "acao": "texto_alto_medio",
+    "titulo": "Reduzir o texto na tela de alto para médio",
+    "classe": "B",
+    "metrica_nome": "conversões por mil impressões",
+    "impacto_estimado": "conversões por mil impressões +36% (de +8% a +71%), evidência robusta, mas sensível à análise",
+    "diferenca_score": 13.97,
+    "ressalvas": [
+     "classe sensível à análise"
+    ]
+   },
+   {
+    "prioridade": 3,
+    "acao": "formato_meta_horizontal",
+    "titulo": "Trocar o vídeo horizontal por vertical",
+    "classe": "C",
+    "metrica_nome": "conversões por mil impressões",
+    "impacto_estimado": "Klike Score +4,7 pontos; sem evidência suficiente em conversões por mil impressões",
+    "diferenca_score": 4.72,
+    "ressalvas": [
+     "sem evidência na métrica"
+    ]
+   }
+  ],
+  "nota_metodologica": "As associações com performance são gerais: estimadas na base inteira, com ajuste pelo contexto da campanha e pelos outros atributos do criativo (o formato, dentro de cada plataforma). Não são efeitos medidos só em campanhas como esta. O suporte histórico contextual conta campanhas comparáveis no recorte indicado: descreve a base de comparação, não uma estimativa do efeito nesse recorte. O score é a previsão do modelo. Nada disso é efeito causal.",
+  "avisos": [],
+  "recomendacoes": [
+   {
+    "prioridade": 1,
+    "acao": "rosto",
+    "titulo": "Mostrar um rosto humano",
+    "campo": "has_face",
+    "valor_atual": false,
+    "valor_sugerido": true,
+    "de": "sem rosto humano",
+    "para": "com rosto humano",
+    "classe": "A",
+    "classe_descricao": "melhoria com evidência de performance",
+    "impacto_estimado": "conversões por mil impressões +29% (de +10% a +52%), evidência robusta",
+    "metrica": "conversions_per_mille",
+    "metrica_nome": "conversões por mil impressões",
+    "associacao": {
+     "metrica": "conversions_per_mille",
+     "metrica_nome": "conversões por mil impressões",
+     "variacao": 0.2889,
+     "ic_inferior": 0.0952,
+     "ic_superior": 0.517,
+     "unidade": "variação relativa",
+     "evidencia": "robusto",
+     "estavel": true,
+     "p_valor": 0.0022579271056707,
+     "q_valor": 0.017561655266328,
+     "campanhas": 481,
+     "sensibilidade": null,
+     "limitacoes": "19 campanhas sem conversão ficam fora do modelo em log; a binomial negativa as mantém"
+    },
+    "outras_associacoes": [
+     {
+      "metrica": "ctr",
+      "metrica_nome": "CTR",
+      "variacao": 0.235,
+      "ic_inferior": 0.0728,
+      "ic_superior": 0.4216,
+      "unidade": "variação relativa",
+      "evidencia": "robusto",
+      "estavel": true,
+      "p_valor": 0.0032896519878673,
+      "q_valor": 0.0209341490137013,
+      "campanhas": 500,
+      "sensibilidade": null,
+      "limitacoes": "teto de registro: 55 campanhas com CTR de 15%"
+     },
+     {
+      "metrica": "engagement_rate",
+      "metrica_nome": "engajamento",
+      "variacao": 0.4267,
+      "ic_inferior": 0.2011,
+      "ic_superior": 0.6946,
+      "unidade": "variação relativa",
+      "evidencia": "robusto",
+      "estavel": true,
+      "p_valor": 5.1960163448721867e-05,
+      "q_valor": 0.0009093028603526,
+      "campanhas": 468,
+      "sensibilidade": null,
+      "limitacoes": "teto de registro: 11 campanhas com 10%; 32 sem registro"
+     },
+     {
+      "metrica": "completion_rate",
+      "metrica_nome": "retenção",
+      "variacao": 0.1098,
+      "ic_inferior": 0.0023,
+      "ic_superior": 0.229,
+      "unidade": "variação relativa",
+      "evidencia": "indício",
+      "estavel": true,
+      "p_valor": 0.0451551272657116,
+      "q_valor": 0.1859328769764596,
+      "campanhas": 437,
+      "sensibilidade": null,
+      "limitacoes": "limitada a 100%: 32 campanhas; 63 sem tempo assistido ou duração"
+     }
+    ],
+    "score_antes": 54.63,
+    "score_depois": 66.48,
+    "diferenca_score": 11.84,
+    "diferenca_score_modelo": {
+     "estimativa": 11.84,
+     "ic_inferior": 10.41,
+     "ic_superior": 13.3,
+     "observacao": "variabilidade da estimativa do modelo, não efeito causal"
+    },
+    "suporte": {
+     "recorte": "plataforma, categoria e objetivo",
+     "contexto": {
+      "platform": "Meta",
+      "category": "Lead Gen",
+      "objective": "conversions"
+     },
+     "campanhas_valor_atual": 10,
+     "campanhas_valor_sugerido": 10,
+     "grupo_valor_atual": "sem rosto humano",
+     "grupo_valor_sugerido": "com rosto humano",
+     "minimo_por_lado": 10,
+     "risco_extrapolacao": "baixo",
+     "observacao": "campanhas comparáveis no recorte: descrevem a base de comparação, não uma estimativa do efeito nesse recorte"
+    },
+    "justificativa": "Associação geral, ajustada pelo contexto: na base inteira, mostrar um rosto humano se associa a conversões por mil impressões +29% (de +10% a +52%), evidência robusta. Não é um efeito estimado só para campanhas como esta; a base não mostrou diferença robusta entre plataformas, o que não prova que ele seja igual em todas. Em outras métricas: CTR +23,5% (de +7% a +42%), evidência robusta; engajamento +43% (de +20% a +69%), evidência robusta; retenção +11% (de +0,2% a +23%), só indício.",
+    "nota_de_prioridade": null,
+    "avisos": [],
+    "ressalvas": [
+     "associação, não causa (validar em A/B)"
+    ],
+    "proximo_passo": "Teste A/B da versão com rosto humano contra a atual, medindo conversões por mil impressões."
+   },
+   {
+    "prioridade": 2,
+    "acao": "texto_alto_medio",
+    "titulo": "Reduzir o texto na tela de alto para médio",
+    "campo": "text_density",
+    "valor_atual": "high",
+    "valor_sugerido": "medium",
+    "de": "com texto alto",
+    "para": "com texto médio",
+    "classe": "B",
+    "classe_descricao": "melhoria com evidência fraca ou sensível",
+    "impacto_estimado": "conversões por mil impressões +36% (de +8% a +71%), evidência robusta, mas sensível à análise",
+    "metrica": "conversions_per_mille",
+    "metrica_nome": "conversões por mil impressões",
+    "associacao": {
+     "metrica": "conversions_per_mille",
+     "metrica_nome": "conversões por mil impressões",
+     "variacao": 0.3594,
+     "ic_inferior": 0.0822,
+     "ic_superior": 0.7077,
+     "unidade": "variação relativa",
+     "evidencia": "robusto",
+     "estavel": false,
+     "p_valor": 0.0083224775098177,
+     "q_valor": 0.04481334043748,
+     "campanhas": 481,
+     "sensibilidade": "sem as correções por plausibilidade da Parte 1, fica só indício",
+     "limitacoes": "19 campanhas sem conversão ficam fora do modelo em log; a binomial negativa as mantém"
+    },
+    "outras_associacoes": [
+     {
+      "metrica": "ctr",
+      "metrica_nome": "CTR",
+      "variacao": 0.2332,
+      "ic_inferior": 0.0185,
+      "ic_superior": 0.4931,
+      "unidade": "variação relativa",
+      "evidencia": "indício",
+      "estavel": true,
+      "p_valor": 0.0317389357406164,
+      "q_valor": 0.1481150334562101,
+      "campanhas": 500,
+      "sensibilidade": null,
+      "limitacoes": "teto de registro: 55 campanhas com CTR de 15%"
+     },
+     {
+      "metrica": "completion_rate",
+      "metrica_nome": "retenção",
+      "variacao": 0.2913,
+      "ic_inferior": 0.1283,
+      "ic_superior": 0.4779,
+      "unidade": "variação relativa",
+      "evidencia": "robusto",
+      "estavel": true,
+      "p_valor": 0.0002045328142631,
+      "q_valor": 0.0028634593996845,
+      "campanhas": 437,
+      "sensibilidade": null,
+      "limitacoes": "limitada a 100%: 32 campanhas; 63 sem tempo assistido ou duração"
+     },
+     {
+      "metrica": "roas_non_branding",
+      "metrica_nome": "ROAS",
+      "variacao": 0.2085,
+      "ic_inferior": 0.0056,
+      "ic_superior": 0.4523,
+      "unidade": "variação relativa",
+      "evidencia": "indício",
+      "estavel": false,
+      "p_valor": 0.0434328183793411,
+      "q_valor": 0.1859328769764596,
+      "campanhas": 424,
+      "sensibilidade": "sem as correções por plausibilidade da Parte 1, fica inconclusiva",
+      "limitacoes": "não se aplica a Branding (63 campanhas)"
+     }
+    ],
+    "score_antes": 54.63,
+    "score_depois": 68.6,
+    "diferenca_score": 13.97,
+    "diferenca_score_modelo": {
+     "estimativa": 13.97,
+     "ic_inferior": 11.98,
+     "ic_superior": 16.08,
+     "observacao": "variabilidade da estimativa do modelo, não efeito causal"
+    },
+    "suporte": {
+     "recorte": "plataforma e objetivo",
+     "contexto": {
+      "platform": "Meta",
+      "objective": "conversions"
+     },
+     "campanhas_valor_atual": 10,
+     "campanhas_valor_sugerido": 37,
+     "grupo_valor_atual": "com texto alto",
+     "grupo_valor_sugerido": "com texto médio",
+     "minimo_por_lado": 10,
+     "risco_extrapolacao": "baixo",
+     "observacao": "campanhas comparáveis no recorte: descrevem a base de comparação, não uma estimativa do efeito nesse recorte"
+    },
+    "justificativa": "Associação geral, ajustada pelo contexto: na base inteira, usar texto médio em vez de alto se associa a conversões por mil impressões +36% (de +8% a +71%), evidência robusta, mas sensível à análise. Não é um efeito estimado só para campanhas como esta; a base não mostrou diferença robusta entre plataformas, o que não prova que ele seja igual em todas. Em outras métricas: CTR +23% (de +2% a +49%), só indício; retenção +29% (de +13% a +48%), evidência robusta; ROAS +21% (de +1% a +45%), só indício, mas sensível à análise. Reduzir para texto baixo também é opção: conversões por mil impressões +31% (de +3% a +66%), só indício, mas sensível à análise; no modelo, o score sobe +7,2 pontos, contra +14,0 do texto médio.",
+    "nota_de_prioridade": "Tem impacto estimado maior que mostrar um rosto humano, mas fica depois porque a evidência é de classe B: melhoria com evidência fraca ou sensível.",
+    "avisos": [
+     "A classe depende da análise: sem as correções por plausibilidade da Parte 1, fica só indício."
+    ],
+    "ressalvas": [
+     "classe sensível à análise"
+    ],
+    "proximo_passo": "Teste A/B da versão com texto médio contra a atual, medindo conversões por mil impressões."
+   },
+   {
+    "prioridade": 3,
+    "acao": "formato_meta_horizontal",
+    "titulo": "Trocar o vídeo horizontal por vertical",
+    "campo": "format",
+    "valor_atual": "horizontal",
+    "valor_sugerido": "vertical",
+    "de": "com vídeo horizontal",
+    "para": "com vídeo vertical",
+    "classe": "C",
+    "classe_descricao": "oportunidade de score, sem evidência suficiente na métrica do objetivo",
+    "impacto_estimado": "Klike Score +4,7 pontos; sem evidência suficiente em conversões por mil impressões",
+    "metrica": "conversions_per_mille",
+    "metrica_nome": "conversões por mil impressões",
+    "associacao": {
+     "metrica": "conversions_per_mille",
+     "metrica_nome": "conversões por mil impressões",
+     "variacao": 0.0158,
+     "ic_inferior": -0.2616,
+     "ic_superior": 0.3975,
+     "unidade": "variação relativa",
+     "evidencia": "inconclusivo",
+     "estavel": true,
+     "p_valor": 0.9231948637377292,
+     "q_valor": 0.9791460676006216,
+     "campanhas": 234,
+     "sensibilidade": null,
+     "limitacoes": "19 campanhas sem conversão ficam fora do modelo em log; a binomial negativa as mantém"
+    },
+    "outras_associacoes": [
+     {
+      "metrica": "engagement_rate",
+      "metrica_nome": "engajamento",
+      "variacao": 0.6319,
+      "ic_inferior": 0.2205,
+      "ic_superior": 1.1821,
+      "unidade": "variação relativa",
+      "evidencia": "robusto",
+      "estavel": true,
+      "p_valor": 0.0009530613942607,
+      "q_valor": 0.0095306139426078,
+      "campanhas": 224,
+      "sensibilidade": null,
+      "limitacoes": "teto de registro: 11 campanhas com 10%; 32 sem registro"
+     }
+    ],
+    "score_antes": 54.63,
+    "score_depois": 59.35,
+    "diferenca_score": 4.72,
+    "diferenca_score_modelo": {
+     "estimativa": 4.72,
+     "ic_inferior": 2.56,
+     "ic_superior": 6.83,
+     "observacao": "variabilidade da estimativa do modelo, não efeito causal"
+    },
+    "suporte": {
+     "recorte": "plataforma e objetivo",
+     "contexto": {
+      "platform": "Meta",
+      "objective": "conversions"
+     },
+     "campanhas_valor_atual": 31,
+     "campanhas_valor_sugerido": 27,
+     "grupo_valor_atual": "com vídeo horizontal",
+     "grupo_valor_sugerido": "com vídeo vertical",
+     "minimo_por_lado": 10,
+     "risco_extrapolacao": "baixo",
+     "observacao": "campanhas comparáveis no recorte: descrevem a base de comparação, não uma estimativa do efeito nesse recorte"
+    },
+    "justificativa": "O modelo prevê mais score, mas não há evidência suficiente de ganho em conversões por mil impressões, a métrica do objetivo: +2% (de −26% a +40%), inconclusiva. Em outras métricas: engajamento +63% (de +22% a +118%), evidência robusta.",
+    "nota_de_prioridade": "Oportunidade de score: fica depois das recomendações com evidência na métrica do objetivo.",
+    "avisos": [
+     "Sem evidência suficiente de ganho em conversões por mil impressões, a métrica do objetivo: é uma oportunidade de score, não um ganho comprovado nessa métrica. Em outras métricas, a base mostra associação favorável: engajamento."
+    ],
+    "ressalvas": [
+     "sem evidência na métrica"
+    ],
+    "proximo_passo": "Testar em A/B antes de adotar, medindo conversões por mil impressões: a base não mostra ganho suficiente nessa métrica."
+   }
+  ],
+  "nao_recomendadas": []
+ }
+}
