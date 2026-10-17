@@ -4,7 +4,7 @@ Como usar a demonstração interativa do case, passo a passo. Não é preciso sa
 
 ## 1. Acessar
 
-- **Online:** pelo link na [seção do Interactive Lab](../README.md#extra--klike-interactive-lab) do README. O servidor gratuito adormece depois de um tempo sem uso, e a primeira visita pode levar cerca de um minuto. A tela avisa enquanto espera e oferece "Tentar novamente" se a primeira chamada falhar.
+- **Online:** em [case-klike-ia.vercel.app](https://case-klike-ia.vercel.app). O servidor gratuito adormece depois de um tempo sem uso, e a primeira visita pode levar cerca de um minuto. A tela avisa enquanto espera e oferece "Tentar novamente" se a primeira chamada falhar.
 - **No seu computador:** siga [Como rodar](../README.md#interactive-lab) e abra `http://localhost:5173`.
 
 A barra lateral mostra as três etapas: **Campanhas**, **Análise** e **Laboratório**. No celular, ela vira uma barra no topo. A campanha escolhida aparece em "Campanha em análise", com o atalho "Trocar campanha". Numa campanha da base, o endereço da página guarda a etapa e a campanha, então dá para compartilhar o link de uma análise.
