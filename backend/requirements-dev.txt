@@ -1,0 +1,4 @@
+# Testes da API
+-r requirements.txt
+pytest>=8.0
+httpx2>=2.13

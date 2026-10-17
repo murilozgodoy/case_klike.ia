@@ -1,0 +1,10 @@
+# API do Klike Interactive Lab (Render). Versões testadas com Python 3.13.3.
+# Só o que o pacote klike usa em execução: sem Jupyter nem matplotlib, que servem aos notebooks.
+numpy==2.5.4
+pandas==2.3.3
+scipy==1.18.1
+scikit-learn==1.9.1
+statsmodels==0.15.0
+joblib==1.6.0
+fastapi==0.143.3
+uvicorn==0.54.0
