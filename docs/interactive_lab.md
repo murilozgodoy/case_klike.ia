@@ -10,6 +10,8 @@ Ela não refaz nenhuma análise. O backend é uma camada fina sobre o pacote `kl
 
 O frontend só formata e apresenta. Nenhuma estatística é calculada nele.
 
+**Publicado em:** aplicação em https://case-klike-ia.vercel.app; API em https://klike-interactive-lab-api.onrender.com, com documentação interativa em https://klike-interactive-lab-api.onrender.com/docs.
+
 ## O que a aplicação oferece
 
 Três etapas: **Campanhas** (indicadores, exemplos guiados, explorador das 500 campanhas e formulário de campanha nova), **Análise** (o relatório do engine) e **Laboratório** (a comparação de uma alteração do criativo). O passo a passo, para quem nunca usou a aplicação, está no [guia de uso](guia_interactive_lab.md).

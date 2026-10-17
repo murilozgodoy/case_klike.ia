@@ -15,7 +15,7 @@ A Klike quer saber, antes de investir em mídia, se um vídeo tende a performar 
 3. **Recomendar edições** (Parte 3): para cada campanha, o recommendations engine lista as edições que a base sustenta, com a mudança prevista no score e a força da evidência. 247 das 500 campanhas (49,4%) recebem três ou mais recomendações; quem recebe menos já segue a maior parte do catálogo, e o engine diz isso em vez de completar a lista.
 4. **Levar ao produto** (Parte 4): como extrair esses atributos do próprio vídeo e validar as recomendações com testes A/B reais.
 
-Como extra, o [Klike Interactive Lab](#extra--klike-interactive-lab) mostra o modelo e o engine funcionando numa aplicação web.
+Como extra, o [Klike Interactive Lab](#extra--klike-interactive-lab) mostra o modelo e o engine funcionando numa aplicação web: **[case-klike-ia.vercel.app](https://case-klike-ia.vercel.app)**.
 
 Duas ressalvas valem para o case inteiro: os dados são simulados, e as recomendações se apoiam em associações históricas, não em efeitos causais comprovados. Por isso, cada recomendação é uma hipótese para teste A/B e vem com a força da evidência à vista.
 
@@ -588,7 +588,9 @@ A proposta transforma o protótipo num ciclo de melhoria contínua dos criativos
 
 > Guia de uso: [`docs/guia_interactive_lab.md`](docs/guia_interactive_lab.md) · Documento técnico: [`docs/interactive_lab.md`](docs/interactive_lab.md)
 
-<!-- Links públicos (Vercel e Render): adicionar aqui depois do deploy. -->
+### ▶ Experimente: [case-klike-ia.vercel.app](https://case-klike-ia.vercel.app)
+
+Abra uma campanha de exemplo, leia as recomendações e teste uma alteração no laboratório, sem instalar nada. A primeira visita depois de um tempo sem uso pode levar cerca de um minuto, enquanto o servidor gratuito desperta.
 
 **Por que existe.** Os resultados do case estão em notebooks e tabelas, que pedem Python e familiaridade técnica. O Interactive Lab é uma extensão opcional que leva o mesmo modelo e o mesmo engine para uma aplicação web: qualquer pessoa explora as campanhas, lê as recomendações e testa alterações sem instalar nada.
 
@@ -605,7 +607,7 @@ A proposta transforma o protótipo num ciclo de melhoria contínua dos criativos
 
 - **Nada é recalculado.** O backend chama o pacote `klike`, e o frontend só apresenta o que a API devolve: não inventa recomendações nem calcula estatística própria.
 - **Processamento real.** Os dados são simulados, mas o processamento é real e reproduzível. Os testes da API comparam cada resposta com a execução direta do pacote.
-- **Sem modelo de linguagem, por escolha.** As recomendações vêm de regras explícitas sobre a evidência estatística e de um modelo treinado. Cada número tem origem rastreável, a mesma entrada gera sempre a mesma saída, e toda ressalva vem da análise que a sustenta.
+- **Sem modelo de linguagem nem respostas prontas, por escolha.** As recomendações vêm de regras explícitas sobre a evidência estatística e de um modelo treinado. Cada número tem origem rastreável, a mesma entrada gera sempre a mesma saída, e toda ressalva vem da análise que a sustenta.
 - **As distinções do case continuam na tela:** score previsto não é performance, associação histórica não é efeito causal, e a comparação do laboratório não é um teste A/B.
 
 ### Um MVP com arquitetura proporcional ao escopo
@@ -696,6 +698,12 @@ npm run build      # build de produção em frontend/dist
 | `CORS_ORIGIN_REGEX` | API, opcional | Padrão para as URLs de pré-visualização da Vercel. |
 
 O deploy usa o blueprint [`render.yaml`](render.yaml) para a API no Render e a Vercel para o frontend, com *Root Directory* `frontend`. O passo a passo está em [`docs/interactive_lab.md`](docs/interactive_lab.md#deploy).
+
+| Publicado | Endereço |
+| :-- | :-- |
+| Aplicação web (Vercel) | https://case-klike-ia.vercel.app |
+| API FastAPI (Render) | https://klike-interactive-lab-api.onrender.com |
+| Documentação interativa da API | https://klike-interactive-lab-api.onrender.com/docs |
 
 ## Estrutura do repositório
 
