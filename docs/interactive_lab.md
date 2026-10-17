@@ -12,20 +12,7 @@ O frontend só formata e apresenta. Nenhuma estatística é calculada nele.
 
 ## O que a aplicação oferece
 
-1. **Campanhas.** Indicadores do projeto, cada um rotulado com a origem; como as quatro partes se conectam; três exemplos guiados; um explorador com filtros por plataforma, objetivo e categoria, busca por ID e paginação; e um formulário para uma campanha nova, que não é guardada.
-2. **Análise e recomendações.**
-   - Contexto e criativo da campanha.
-   - O score previsto, separado do observado nas campanhas da base.
-   - A métrica avaliada e os avisos da campanha.
-   - O resumo executivo do engine.
-   - Cada recomendação com classe, impacto, diferença de score, intervalo do modelo, suporte histórico, ressalvas e, em detalhe, a fundamentação e o próximo passo.
-   - Campanhas com zero, uma ou duas recomendações são mostradas como estão, com a explicação.
-3. **Laboratório de cenários.**
-   - Pré-visualiza uma edição recomendada ou altera livremente um único atributo do criativo.
-   - Mostra as duas versões, o score previsto de cada uma, pelo mesmo preditor, e a diferença.
-   - Diz se a edição é uma ação do catálogo com evidência. Uma edição livre não herda a evidência de uma ação parecida.
-   - Traz os avisos do engine para a versão modificada.
-   - O botão de restaurar volta à versão original.
+Três etapas: **Campanhas** (indicadores, exemplos guiados, explorador das 500 campanhas e formulário de campanha nova), **Análise** (o relatório do engine) e **Laboratório** (a comparação de uma alteração do criativo). O passo a passo, para quem nunca usou a aplicação, está no [guia de uso](guia_interactive_lab.md).
 
 O que a aplicação deixa explícito em cada tela:
 - score previsto não é performance;
@@ -50,7 +37,7 @@ backend/    FastAPI (Render)
 render.yaml       blueprint do serviço no Render
 ```
 
-É uma arquitetura enxuta por escolha: uma demonstração concentrada na experiência do avaliador e na reutilização do código do case. Ela não tem banco de dados, autenticação nem estado entre sessões, porque nada disso é necessário. O modelo é gerado no build, pela especificação congelada da Parte 2, e carregado uma única vez quando a API inicia. Nenhuma requisição treina modelo ou recalcula evidências.
+É uma arquitetura enxuta por escolha, proporcional a um MVP demonstrativo; as razões estão no [README](../README.md#um-mvp-com-arquitetura-proporcional-ao-escopo). Ela não tem banco de dados, autenticação nem estado entre sessões. O modelo é gerado no build, pela especificação congelada da Parte 2, e carregado uma única vez quando a API inicia. Nenhuma requisição treina modelo ou recalcula evidências.
 
 ## API
 

@@ -4,6 +4,21 @@ Análise de 500 campanhas de vídeo em Meta, TikTok e LinkedIn para entender o q
 
 **Autor:** Murilo Godoy
 
+**Navegação:** [Em poucas palavras](#em-poucas-palavras) · [Resumo](#resumo) · [Termos usados](#termos-usados) · [Parte 1](#parte-11--perfil-e-qualidade-dos-dados) · [Parte 2](#parte-2--modelagem-do-klike-score) · [Parte 3](#parte-3--recommendations-engine) · [Parte 4](#parte-4--visão-de-produto) · [Interactive Lab](#extra--klike-interactive-lab) · [Limitações](#limitações) · [Como rodar](#como-rodar) · [Estrutura](#estrutura-do-repositório)
+
+## Em poucas palavras
+
+A Klike quer saber, antes de investir em mídia, se um vídeo tende a performar e o que mudar nele. O case responde em quatro partes, a partir de 500 campanhas simuladas:
+
+1. **Entender os dados** (Parte 1): corrigir os registros inconsistentes e medir quais características do vídeo acompanham os melhores resultados. Hook nos primeiros segundos e rosto humano se destacam na atenção.
+2. **Prever o Klike Score** (Parte 2): um modelo estima o score de um vídeo antes da veiculação, com erro médio de 6,43 pontos numa escala de 0 a 100.
+3. **Recomendar edições** (Parte 3): para cada campanha, o recommendations engine lista as edições que a base sustenta, com a mudança prevista no score e a força da evidência. 247 das 500 campanhas (49,4%) recebem três ou mais recomendações; quem recebe menos já segue a maior parte do catálogo, e o engine diz isso em vez de completar a lista.
+4. **Levar ao produto** (Parte 4): como extrair esses atributos do próprio vídeo e validar as recomendações com testes A/B reais.
+
+Como extra, o [Klike Interactive Lab](#extra--klike-interactive-lab) mostra o modelo e o engine funcionando numa aplicação web.
+
+Duas ressalvas valem para o case inteiro: os dados são simulados, e as recomendações se apoiam em associações históricas, não em efeitos causais comprovados. Por isso, cada recomendação é uma hipótese para teste A/B e vem com a força da evidência à vista.
+
 ## Resumo
 
 A Parte 1, de análise exploratória, em seis pontos:
@@ -44,7 +59,7 @@ A Parte 4, a visão de produto, em três pontos:
 | 2 | Modelagem do Klike Score | [Seção](#parte-2--modelagem-do-klike-score) e [notebook 03](notebooks/03_modeling.ipynb) |
 | 3 | Recommendations engine | [Seção](#parte-3--recommendations-engine) e [notebook 04](notebooks/04_recommendations.ipynb) |
 | 4 | Visão de produto | [Seção](#parte-4--visão-de-produto) e [documento](docs/visao_de_produto.md) |
-| Extra | Demonstração interativa | [Seção](#extra--klike-interactive-lab) e [documento](docs/interactive_lab.md) |
+| Extra | Demonstração interativa | [Seção](#extra--klike-interactive-lab), [guia de uso](docs/guia_interactive_lab.md) e [documento técnico](docs/interactive_lab.md) |
 
 ---
 
@@ -77,6 +92,24 @@ Três perguntas guiaram cada etapa:
 - **Comparar criativos por volume.** Volume mede verba, então usei taxas.
 - **Recomendar mudanças de duração.** A base não mostra efeito.
 - **Transformar zeros com log(1 + y).** O resultado muda com a unidade da métrica. Para manter as campanhas sem conversão, usei modelos de contagem.
+
+---
+
+## Termos usados
+
+| Termo | Em linguagem simples |
+| :-- | :-- |
+| **Klike Score** | A nota de 0 a 100 que a Klike dá a cada campanha. É o que o modelo prevê; não é um resultado de mídia, como cliques ou vendas. |
+| **Atributos de pré-publicação** | O que se sabe antes de veicular: o contexto (plataforma, objetivo, público) e o criativo (hook, rosto, legenda, formato etc.). São os 13 que o modelo usa. |
+| **Associação** | Campanhas com uma característica performam diferente das campanhas sem ela, comparando com o resto mantido igual numa regressão. Não prova que a característica cause a diferença. |
+| **Teste A/B** | Veicular duas versões ao mesmo tempo, sorteando quem vê cada uma. É o que confirmaria um efeito causal. |
+| **Intervalo de 95%** | A faixa de valores compatíveis com os dados. Quanto mais larga, mais incerta a estimativa. |
+| **Robusto, indício, inconclusivo** | A força de um resultado, considerando que muitos testes foram feitos (correção de Benjamini-Hochberg). Robusto resiste à correção; indício só passa no teste isolado; inconclusivo, nem isso. O q-valor é o p-valor já corrigido. |
+| **Ridge** | Um modelo linear: soma um peso para cada atributo, com uma penalização que evita pesos exagerados numa base pequena. |
+| **MAE** | O erro absoluto médio: quanto a previsão erra, em média, em pontos de score. |
+| **Validação cruzada e teste final** | O erro é medido em campanhas que o modelo não viu no treino: em 25 partições do desenvolvimento e, no fim, em 100 campanhas reservadas e consultadas uma única vez. |
+| **Classes A, B e C** | A força da evidência de uma recomendação na métrica do objetivo. A: associação robusta e estável. B: indício, ou robusta mas sensível à análise. C: o score previsto sobe, sem evidência suficiente na métrica, e a recomendação é só uma hipótese para teste. |
+| **Suporte histórico** | Quantas campanhas parecidas existem com o valor atual e com o sugerido. Mostra quanta base há para comparar; não mede o efeito. |
 
 ---
 
@@ -553,17 +586,40 @@ A proposta transforma o protótipo num ciclo de melhoria contínua dos criativos
 
 ## Extra · Klike Interactive Lab
 
-> Documento completo: [`docs/interactive_lab.md`](docs/interactive_lab.md)
+> Guia de uso: [`docs/guia_interactive_lab.md`](docs/guia_interactive_lab.md) · Documento técnico: [`docs/interactive_lab.md`](docs/interactive_lab.md)
 
-Uma demonstração interativa, opcional, para quem quer ver o case funcionando sem abrir notebooks nem instalar Python. É uma aplicação web com três áreas:
+<!-- Links públicos (Vercel e Render): adicionar aqui depois do deploy. -->
 
-- **Campanhas:** indicadores do projeto com a origem de cada um, exemplos guiados, um explorador das 500 campanhas e um formulário para uma campanha nova.
-- **Análise e recomendações:** o relatório do engine apresentado para quem é de marketing. Mostra o score previsto separado do observado, a métrica avaliada, o resumo executivo e cada recomendação com classe, impacto, suporte e ressalvas.
-- **Laboratório de cenários:** compara o score previsto da campanha original com o de uma versão com uma única edição do criativo. Diz se a edição tem evidência no catálogo e deixa claro que a comparação não é um teste A/B.
+**Por que existe.** Os resultados do case estão em notebooks e tabelas, que pedem Python e familiaridade técnica. O Interactive Lab é uma extensão opcional que leva o mesmo modelo e o mesmo engine para uma aplicação web: qualquer pessoa explora as campanhas, lê as recomendações e testa alterações sem instalar nada.
 
-A aplicação reaproveita o pacote `klike`, sem reimplementar nada: um backend em FastAPI expõe o preditor e o recommendations engine, e um frontend em React e TypeScript só apresenta o que a API devolve. Testes da API comparam cada resposta com a execução direta do pacote.
+**O que dá para fazer:**
 
-A arquitetura é enxuta por escolha: sem banco de dados nem autenticação, com o modelo gerado no build pela especificação congelada e carregado uma vez. O foco é a experiência do avaliador, não uma plataforma comercial. O deploy previsto usa a Vercel (frontend) e o Render (API), com as instruções no documento.
+- **Explorar as 500 campanhas,** com filtros por plataforma, objetivo e categoria, busca por ID e três exemplos guiados.
+- **Ver a análise de uma campanha:** o score previsto ao lado do observado, a métrica avaliada, o resumo executivo e cada recomendação com classe, impacto estimado, suporte histórico e ressalvas.
+- **Cadastrar uma campanha hipotética** e receber a mesma análise de uma campanha da base. Ela não é guardada.
+- **Comparar uma alteração do criativo** no laboratório de cenários: o score previsto da versão original ao lado do da versão editada, uma alteração por vez, com a evidência que o catálogo tem para ela.
+
+**Como se conecta às quatro partes.** A base é carregada com a limpeza da Parte 1. O score previsto vem do modelo Ridge da Parte 2, gerado pela especificação congelada. Recomendações, classes, evidências e ressalvas vêm do recommendations engine da Parte 3. E a aplicação mostra, em pequena escala, a experiência que a Parte 4 descreve, sem as features de vídeo nem a validação com dados reais que ela propõe.
+
+**Fiel ao case.**
+
+- **Nada é recalculado.** O backend chama o pacote `klike`, e o frontend só apresenta o que a API devolve: não inventa recomendações nem calcula estatística própria.
+- **Processamento real.** Os dados são simulados, mas o processamento é real e reproduzível. Os testes da API comparam cada resposta com a execução direta do pacote.
+- **Sem modelo de linguagem, por escolha.** As recomendações vêm de regras explícitas sobre a evidência estatística e de um modelo treinado. Cada número tem origem rastreável, a mesma entrada gera sempre a mesma saída, e toda ressalva vem da análise que a sustenta.
+- **As distinções do case continuam na tela:** score previsto não é performance, associação histórica não é efeito causal, e a comparação do laboratório não é um teste A/B.
+
+### Um MVP com arquitetura proporcional ao escopo
+
+O Interactive Lab é um MVP demonstrativo, não uma plataforma comercial. A arquitetura foi escolhida para demonstrar o case com fidelidade e pouca operação:
+
+- **Três camadas com papéis separados.** O pacote `klike` concentra a ciência, a API em FastAPI expõe o preditor e o engine, e o frontend em React e TypeScript cuida da experiência. Como a interface não recalcula nada, ela não diverge dos resultados do case.
+- **Sem banco de dados.** A base é fixa e versionada no repositório, e as campanhas hipotéticas são analisadas e descartadas. Não há o que persistir.
+- **Sem autenticação.** A aplicação mostra só dados simulados e não guarda nada de quem a usa.
+- **Sem processamento de vídeo.** A base traz atributos já marcados, não vídeos. Extrair esses atributos do vídeo exige validar a extração contra as marcações, como propõe a Parte 4.
+- **Um processo, carregado uma vez.** O modelo é gerado no build e carregado quando a API inicia; uma análise leva cerca de 0,1 s. Filas, cache ou serviços separados não resolveriam nenhum problema que exista nesta escala.
+- **Deploy simples.** Frontend na Vercel e API no Render, nos planos gratuitos, com a configuração versionada no repositório.
+
+Numa operação real, essas peças mudariam: autenticação e dados de clientes, persistência das análises, extração assíncrona do vídeo e um modelo validado com dados reais. A [Parte 4](#parte-4--visão-de-produto) descreve esse caminho.
 
 ---
 
@@ -585,6 +641,8 @@ A arquitetura é enxuta por escolha: sem banco de dados nem autenticação, com 
 ---
 
 ## Como rodar
+
+### Análise, modelo e engine
 
 Requer Python 3.10 ou superior. Testado com Python 3.13.
 
@@ -610,14 +668,34 @@ jupyter nbconvert --to notebook --execute --inplace notebooks/01_data_audit.ipyn
 
 O notebook 01 pode levar até um minuto e meio, por causa do teste de permutação dos faltantes; o 03, cerca de três minutos, por causa da validação cruzada aninhada; e o 04, cerca de um minuto e meio, por causa do bootstrap das diferenças de score e das rodadas do engine nas 500 campanhas. O 01 e o 04 também regravam as tabelas em `reports/`.
 
-Para rodar a demonstração interativa localmente:
+### Interactive Lab
+
+Usa o ambiente acima e requer também Node.js 22.12 ou superior. A API roda na raiz do repositório:
 
 ```bash
 pip install -r backend/requirements-dev.txt
-uvicorn app.main:app --app-dir backend --reload   # API em http://localhost:8000
+python -m klike.train                             # gera o modelo em models/, se ainda não existir
+uvicorn app.main:app --app-dir backend --reload   # API em http://localhost:8000, documentação em /docs
 pytest backend/tests                             # testes da API
-cd frontend && npm install && npm run dev        # interface em http://localhost:5173
 ```
+
+A interface roda em outro terminal:
+
+```bash
+cd frontend
+npm ci
+npm run dev        # http://localhost:5173, com /api encaminhado para a API local
+npm test           # testes da interface
+npm run build      # build de produção em frontend/dist
+```
+
+| Variável | Onde | Para quê |
+| :-- | :-- | :-- |
+| `VITE_API_URL` | Frontend, no build | URL da API publicada, sem barra no fim. Localmente fica vazia, e o Vite encaminha `/api` para a porta 8000. |
+| `CORS_ORIGINS` | API | Origens do frontend autorizadas, separadas por vírgula. O padrão é `http://localhost:5173,http://127.0.0.1:5173`. |
+| `CORS_ORIGIN_REGEX` | API, opcional | Padrão para as URLs de pré-visualização da Vercel. |
+
+O deploy usa o blueprint [`render.yaml`](render.yaml) para a API no Render e a Vercel para o frontend, com *Root Directory* `frontend`. O passo a passo está em [`docs/interactive_lab.md`](docs/interactive_lab.md#deploy).
 
 ## Estrutura do repositório
 
@@ -626,6 +704,7 @@ cd frontend && npm install && npm run dev        # interface em http://localhost
 ├── data/raw/                     dataset original, nunca alterado
 ├── docs/
 │   ├── visao_de_produto.md       Parte 4: visão de produto
+│   ├── guia_interactive_lab.md   demonstração interativa: guia de uso
 │   └── interactive_lab.md        demonstração interativa: arquitetura, API e deploy
 ├── examples/                     campanha nova de exemplo, para a linha de comando
 ├── frontend/                     interface da demonstração interativa (React e TypeScript)
