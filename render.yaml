@@ -1,0 +1,18 @@
+# Blueprint do Render para a API do Klike Interactive Lab (a demonstração opcional do case).
+# O build instala só as dependências de execução, instala o pacote klike em modo editável
+# (os caminhos de data/ e reports/ partem da raiz do repositório) e gera o modelo com a
+# especificação congelada. A API carrega o modelo e as evidências uma vez, ao iniciar.
+services:
+  - type: web
+    name: klike-interactive-lab-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt && pip install --no-deps -e . && python -m klike.train
+    startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.3
+      # Origem do frontend na Vercel, como https://seu-projeto.vercel.app (várias, separadas por vírgula).
+      - key: CORS_ORIGINS
+        sync: false

@@ -44,6 +44,7 @@ A Parte 4, a visão de produto, em três pontos:
 | 2 | Modelagem do Klike Score | [Seção](#parte-2--modelagem-do-klike-score) e [notebook 03](notebooks/03_modeling.ipynb) |
 | 3 | Recommendations engine | [Seção](#parte-3--recommendations-engine) e [notebook 04](notebooks/04_recommendations.ipynb) |
 | 4 | Visão de produto | [Seção](#parte-4--visão-de-produto) e [documento](docs/visao_de_produto.md) |
+| Extra | Demonstração interativa | [Seção](#extra--klike-interactive-lab) e [documento](docs/interactive_lab.md) |
 
 ---
 
@@ -550,6 +551,22 @@ A proposta transforma o protótipo num ciclo de melhoria contínua dos criativos
 
 ---
 
+## Extra · Klike Interactive Lab
+
+> Documento completo: [`docs/interactive_lab.md`](docs/interactive_lab.md)
+
+Uma demonstração interativa, opcional, para quem quer ver o case funcionando sem abrir notebooks nem instalar Python. É uma aplicação web com três áreas:
+
+- **Campanhas:** indicadores do projeto com a origem de cada um, exemplos guiados, um explorador das 500 campanhas e um formulário para uma campanha nova.
+- **Análise e recomendações:** o relatório do engine apresentado para quem é de marketing. Mostra o score previsto separado do observado, a métrica avaliada, o resumo executivo e cada recomendação com classe, impacto, suporte e ressalvas.
+- **Laboratório de cenários:** compara o score previsto da campanha original com o de uma versão com uma única edição do criativo. Diz se a edição tem evidência no catálogo e deixa claro que a comparação não é um teste A/B.
+
+A aplicação reaproveita o pacote `klike`, sem reimplementar nada: um backend em FastAPI expõe o preditor e o recommendations engine, e um frontend em React e TypeScript só apresenta o que a API devolve. Testes da API comparam cada resposta com a execução direta do pacote.
+
+A arquitetura é enxuta por escolha: sem banco de dados nem autenticação, com o modelo gerado no build pela especificação congelada e carregado uma vez. O foco é a experiência do avaliador, não uma plataforma comercial. O deploy previsto usa a Vercel (frontend) e o Render (API), com as instruções no documento.
+
+---
+
 ## Limitações
 
 - **Associação, não causa.** Os efeitos da EDA e os do modelo são diferenças ajustadas por regressão pelo que foi medido; algo não observado, como a qualidade da oferta, pode andar junto com o atributo. Testes A/B confirmariam.
@@ -593,13 +610,25 @@ jupyter nbconvert --to notebook --execute --inplace notebooks/01_data_audit.ipyn
 
 O notebook 01 pode levar até um minuto e meio, por causa do teste de permutação dos faltantes; o 03, cerca de três minutos, por causa da validação cruzada aninhada; e o 04, cerca de um minuto e meio, por causa do bootstrap das diferenças de score e das rodadas do engine nas 500 campanhas. O 01 e o 04 também regravam as tabelas em `reports/`.
 
+Para rodar a demonstração interativa localmente:
+
+```bash
+pip install -r backend/requirements-dev.txt
+uvicorn app.main:app --app-dir backend --reload   # API em http://localhost:8000
+pytest backend/tests                             # testes da API
+cd frontend && npm install && npm run dev        # interface em http://localhost:5173
+```
+
 ## Estrutura do repositório
 
 ```
+├── backend/                      API da demonstração interativa (FastAPI)
 ├── data/raw/                     dataset original, nunca alterado
 ├── docs/
-│   └── visao_de_produto.md       Parte 4: visão de produto
+│   ├── visao_de_produto.md       Parte 4: visão de produto
+│   └── interactive_lab.md        demonstração interativa: arquitetura, API e deploy
 ├── examples/                     campanha nova de exemplo, para a linha de comando
+├── frontend/                     interface da demonstração interativa (React e TypeScript)
 ├── models/                       modelo treinado, gerado por python -m klike.train (fora do git)
 ├── notebooks/
 │   ├── 01_data_audit.ipynb       Parte 1.1: perfil e qualidade dos dados
@@ -626,7 +655,8 @@ O notebook 01 pode levar até um minuto e meio, por causa do teste de permutaç�
 │   ├── train.py                  comando python -m klike.train
 │   ├── formatting.py             números no padrão brasileiro
 │   └── viz.py                    estilo visual único dos gráficos
-└── tests/                        testes automatizados (pytest)
+├── tests/                        testes automatizados (pytest)
+└── render.yaml                   blueprint do deploy da API no Render
 ```
 
 A lógica fica em `src/klike` e os notebooks só a importam. Assim, a mesma limpeza roda nos notebooks, nos testes e no recommendations engine.
