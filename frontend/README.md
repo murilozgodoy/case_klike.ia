@@ -11,4 +11,4 @@ npm run typecheck  # TypeScript
 npm run build      # build de produção em dist/
 ```
 
-Em produção, `VITE_API_URL` aponta para a API publicada, por exemplo `https://klike-interactive-lab-api.onrender.com`. Veja [`docs/interactive_lab.md`](../docs/interactive_lab.md).
+Em produção, `VITE_API_URL` aponta para a API publicada, no formato `https://<serviço>.onrender.com`, sem barra no fim. Veja [`docs/interactive_lab.md`](../docs/interactive_lab.md).
